@@ -17,7 +17,22 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Check for existence of the admin session cookie
+  // 2. SSO Token Transfer Check (cross-port redirect token handler)
+  const tokenParam = request.nextUrl.searchParams.get("token");
+  
+  if (tokenParam) {
+    const url = new URL(request.url);
+    url.searchParams.delete("token");
+    const response = NextResponse.redirect(url);
+    response.cookies.set(COOKIE_NAME, tokenParam, {
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      httpOnly: true,
+      path: "/",
+    });
+    return response;
+  }
+
+  // 3. Check for existence of the admin session cookie
   const token = request.cookies.get(COOKIE_NAME)?.value;
 
   if (!token) {

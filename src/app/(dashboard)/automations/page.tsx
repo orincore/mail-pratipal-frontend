@@ -181,7 +181,7 @@ export default function AutomationsPage() {
 
   // Add a step to the editor list
   const addStep = (type: "email" | "delay" | "condition") => {
-    const defaultEmail = senders.length > 0 ? senders[0].email : "";
+    const defaultEmail = senders.length > 0 ? senders[0].email : "contact@notifications.pratipal.in";
     const defaultTemplate = templates.length > 0 ? templates[0].id : "";
 
     const newStep: AutomationStep = {

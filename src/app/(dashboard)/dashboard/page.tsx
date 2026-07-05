@@ -1,8 +1,5 @@
 import React from "react";
-import connectDB from "@/lib/mongodb";
-import EmailSubscriber from "@/models/EmailSubscriber";
-import EmailCampaign from "@/models/EmailCampaign";
-import EmailEvent from "@/models/EmailEvent";
+import { cookies } from "next/headers";
 import { 
   Users, 
   Mail, 
@@ -14,6 +11,8 @@ import {
   ArrowUpRight
 } from "lucide-react";
 import Link from "next/link";
+import FailedDeliveriesCard from "./FailedDeliveriesCard";
+import TimeframeFilter from "./TimeframeFilter";
 
 interface DashboardStat {
   label: string;
@@ -23,60 +22,46 @@ interface DashboardStat {
   color: string;
 }
 
-export default async function DashboardPage() {
-  await connectDB();
+export default async function DashboardPage(props: {
+  searchParams: Promise<{ timeframe?: string }>
+}) {
+  const searchParams = await props.searchParams;
+  const timeframe = searchParams.timeframe || "weekly";
 
-  // 1. Fetch metrics from MongoDB
-  const totalSubscribers = await EmailSubscriber.countDocuments({ status: "subscribed" });
-  const totalSent = await EmailEvent.countDocuments({ event_type: "sent" });
-  const totalOpens = await EmailEvent.countDocuments({ event_type: "open" });
-  const totalClicks = await EmailEvent.countDocuments({ event_type: "click" });
-  const totalBounces = await EmailEvent.countDocuments({ event_type: "bounce" });
-  const totalComplaints = await EmailEvent.countDocuments({ event_type: "complaint" });
-  
-  const activeSchedules = await EmailCampaign.countDocuments({ status: "scheduled" });
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get("pratipal_session")?.value;
 
-  // 2. Calculate engagement and delivery rates
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3002";
+  const statsRes = await fetch(`${backendUrl}/api/dashboard-stats?timeframe=${timeframe}`, {
+    headers: {
+      Cookie: `pratipal_session=${sessionCookie}`,
+    },
+    next: { revalidate: 0 }
+  });
+
+  if (!statsRes.ok) {
+    throw new Error("Failed to load dashboard statistics from backend");
+  }
+
+  const {
+    totalSubscribers,
+    totalSent,
+    totalOpens,
+    totalClicks,
+    totalBounces,
+    totalComplaints,
+    activeSchedules,
+    recentCampaigns,
+    dailyStats,
+    emailProvider
+  } = await statsRes.json();
+
+  // Calculate engagement and delivery rates
   const openRate = totalSent ? ((totalOpens / totalSent) * 100) : 0;
   const clickRate = totalSent ? ((totalClicks / totalSent) * 100) : 0;
   const bounceRate = totalSent ? ((totalBounces / totalSent) * 100) : 0;
   const complaintRate = totalSent ? ((totalComplaints / totalSent) * 100) : 0;
   const deliveryRate = totalSent ? (((totalSent - totalBounces) / totalSent) * 100) : 100;
-
-  // 3. Fetch recent and upcoming campaigns
-  const recentCampaigns = await EmailCampaign.find()
-    .sort({ created_at: -1 })
-    .limit(5)
-    .populate("template_id", "name");
-
-  // 4. Generate data points for past 7 days to draw the SVG chart
-  const pastSevenDays = Array.from({ length: 7 }, (_, idx) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - idx));
-    return d;
-  });
-
-  const dailyStats = [];
-  for (const day of pastSevenDays) {
-    const startOfDay = new Date(day.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(day.setHours(23, 59, 59, 999));
-
-    const sent = await EmailEvent.countDocuments({
-      event_type: "sent",
-      timestamp: { $gte: startOfDay, $lte: endOfDay },
-    });
-
-    const opens = await EmailEvent.countDocuments({
-      event_type: "open",
-      timestamp: { $gte: startOfDay, $lte: endOfDay },
-    });
-
-    dailyStats.push({
-      dateLabel: day.toLocaleDateString("en-IN", { month: "short", day: "numeric" }),
-      sent,
-      opens,
-    });
-  }
 
   // Calculate SVG Chart Dimensions
   const chartHeight = 200;
@@ -132,24 +117,18 @@ export default async function DashboardPage() {
       icon: MousePointerClick,
       color: "from-orange-500 to-amber-500",
     },
-    {
-      label: "Bounce / Complaint",
-      value: `${bounceRate.toFixed(1)}% / ${complaintRate.toFixed(1)}%`,
-      description: `${totalBounces} bounce / ${totalComplaints} complaint`,
-      icon: AlertOctagon,
-      color: "from-rose-500 to-pink-500",
-    },
   ];
 
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Title & Top Banner */}
-      <div className="flex justify-between items-center bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Console Analytics</h1>
           <p className="text-slate-500 text-sm mt-1">Overview of delivery metrics and list growth.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3 items-center">
+          <TimeframeFilter />
           <Link
             href="/campaigns"
             className="inline-flex items-center gap-1.5 px-4.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition-all shadow-sm shadow-emerald-500/10 cursor-pointer"
@@ -176,13 +155,22 @@ export default async function DashboardPage() {
             </div>
           </div>
         ))}
+        <FailedDeliveriesCard 
+          totalBounces={totalBounces} 
+          totalComplaints={totalComplaints} 
+          sessionCookie={sessionCookie} 
+        />
       </div>
 
       {/* SVG Analytics Chart and Schedule panels */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left/Middle: SVG 7-Day Performance Chart */}
+        {/* Left/Middle: SVG Performance Chart */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-slate-800 mb-4">7-Day Dispatch Performance</h2>
+          <h2 className="text-lg font-bold text-slate-800 mb-4">
+            {timeframe === "daily" ? "Today's Dispatch Performance" :
+             timeframe === "monthly" ? "30-Day Dispatch Performance" :
+             "7-Day Dispatch Performance"}
+          </h2>
           
           <div className="w-full flex justify-center">
             <svg 
@@ -232,6 +220,15 @@ export default async function DashboardPage() {
               {/* X Axis Labels */}
               {dailyStats.map((stat, idx) => {
                 const x = padding + (idx * (chartWidth - padding * 2)) / (dailyStats.length - 1);
+                
+                const showLabel = 
+                  dailyStats.length <= 7 || 
+                  (dailyStats.length === 24 && idx % 4 === 0) || 
+                  (dailyStats.length === 30 && idx % 5 === 0) ||
+                  idx === dailyStats.length - 1;
+
+                if (!showLabel) return null;
+
                 return (
                   <text
                     key={idx}
@@ -270,24 +267,6 @@ export default async function DashboardPage() {
               We found <span className="font-bold text-emerald-600">{activeSchedules}</span> email campaigns currently scheduled to run. Ensure the background daemon process is running to dispatch these jobs.
             </p>
           </div>
-
-          <div className="border-t border-slate-100 pt-6 mt-6 space-y-3">
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest block">System Diagnostics</span>
-            <div className="p-4 bg-slate-50 rounded-xl space-y-2 border border-slate-100">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500">Worker Status</span>
-                <span className="font-bold text-emerald-600 flex items-center gap-1.5">
-                  <span className="h-2 w-2 bg-emerald-500 rounded-full animate-pulse" /> Active
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500">Target Driver</span>
-                <span className="font-mono text-slate-700 bg-slate-200/60 px-2 py-0.5 rounded text-[10px] uppercase">
-                  {process.env.EMAIL_PROVIDER || "Mock/Auto"}
-                </span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -315,7 +294,7 @@ export default async function DashboardPage() {
                 </tr>
               ) : (
                 recentCampaigns.map((camp) => (
-                  <tr key={camp._id.toString()} className="hover:bg-slate-50/50 transition-colors">
+                  <tr key={camp.id || camp._id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="py-3.5 font-semibold text-slate-800">
                       <div>
                         <span>{camp.name}</span>

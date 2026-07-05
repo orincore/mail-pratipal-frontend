@@ -7,12 +7,10 @@ import {
   Users, 
   Send, 
   FileCode, 
-  GitFork, 
-  Settings as SettingsIcon, 
+  Home, 
   LogOut,
   Mail
 } from "lucide-react";
-import { verifyToken } from "@/lib/auth-helper";
 
 interface NavItem {
   label: string;
@@ -25,8 +23,7 @@ const navItems: NavItem[] = [
   { label: "Subscribers", href: "/subscribers", icon: Users },
   { label: "Campaigns", href: "/campaigns", icon: Send },
   { label: "Templates", href: "/templates", icon: FileCode },
-  { label: "Automations", href: "/automations", icon: GitFork },
-  { label: "Settings", href: "/settings", icon: SettingsIcon },
+  { label: "Landing Page", href: "/landing-pages", icon: Home },
 ];
 
 export default async function DashboardLayout({
@@ -36,7 +33,26 @@ export default async function DashboardLayout({
 }) {
   const cookieStore = await cookies();
   const token = cookieStore.get("pratipal_session")?.value;
-  const userPayload = token ? verifyToken(token) : null;
+
+  let userPayload: any = null;
+
+  if (token) {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3002";
+      const authRes = await fetch(`${backendUrl}/api/auth/me`, {
+        headers: {
+          Cookie: `pratipal_session=${token}`,
+        },
+        next: { revalidate: 0 }
+      });
+      if (authRes.ok) {
+        const data = await authRes.json();
+        userPayload = data.user || null;
+      }
+    } catch (e) {
+      console.error("Failed to verify auth session on backend", e);
+    }
+  }
 
   // Double-verify admin roles at the page level
   if (!userPayload || userPayload.role !== "admin") {
@@ -102,10 +118,7 @@ export default async function DashboardLayout({
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Header Panel */}
         <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-8 shadow-sm z-10">
-          <div className="flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">AWS SES Live</span>
-          </div>
+          <div />
 
           <div className="flex items-center gap-4">
             <a

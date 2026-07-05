@@ -354,7 +354,8 @@ export default function SubscribersPage() {
               placeholder="Search by name, email..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 pr-4 py-2 w-full border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+              className="pl-10 pr-4 py-2 w-full border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-800"
+              style={{ color: "#0f172a" }}
             />
           </div>
 
@@ -364,11 +365,12 @@ export default function SubscribersPage() {
             <select
               value={selectedList}
               onChange={(e) => setSelectedList(e.target.value)}
-              className="pl-10 pr-4 py-2 w-full border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 appearance-none bg-white"
+              className="pl-10 pr-4 py-2 w-full border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 appearance-none bg-white text-slate-800"
+              style={{ color: "#0f172a" }}
             >
-              <option value="">All Lists</option>
+              <option value="" style={{ color: "#0f172a" }}>All Lists</option>
               {lists.map((l) => (
-                <option key={l} value={l}>{l}</option>
+                <option key={l} value={l} style={{ color: "#0f172a" }}>{l}</option>
               ))}
             </select>
           </div>
@@ -379,11 +381,12 @@ export default function SubscribersPage() {
             <select
               value={selectedTag}
               onChange={(e) => setSelectedTag(e.target.value)}
-              className="pl-10 pr-4 py-2 w-full border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 appearance-none bg-white"
+              className="pl-10 pr-4 py-2 w-full border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 appearance-none bg-white text-slate-800"
+              style={{ color: "#0f172a" }}
             >
-              <option value="">All Tags</option>
+              <option value="" style={{ color: "#0f172a" }}>All Tags</option>
               {tags.map((t) => (
-                <option key={t} value={t}>{t}</option>
+                <option key={t} value={t} style={{ color: "#0f172a" }}>{t}</option>
               ))}
             </select>
           </div>
@@ -394,13 +397,14 @@ export default function SubscribersPage() {
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="pl-10 pr-4 py-2 w-full border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 appearance-none bg-white"
+              className="pl-10 pr-4 py-2 w-full border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 appearance-none bg-white text-slate-800"
+              style={{ color: "#0f172a" }}
             >
-              <option value="">All Statuses</option>
-              <option value="subscribed">Subscribed</option>
-              <option value="unsubscribed">Unsubscribed</option>
-              <option value="bounced">Bounced</option>
-              <option value="complained">Complained</option>
+              <option value="" style={{ color: "#0f172a" }}>All Statuses</option>
+              <option value="subscribed" style={{ color: "#0f172a" }}>Subscribed</option>
+              <option value="unsubscribed" style={{ color: "#0f172a" }}>Unsubscribed</option>
+              <option value="bounced" style={{ color: "#0f172a" }}>Bounced</option>
+              <option value="complained" style={{ color: "#0f172a" }}>Complained</option>
             </select>
           </div>
         </div>
@@ -523,7 +527,8 @@ export default function SubscribersPage() {
                   required
                   value={formEmail}
                   onChange={(e) => setFormEmail(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+                  style={{ color: "#0f172a" }}
                   placeholder="name@domain.com"
                   disabled={!!editingSubscriber}
                 />
@@ -536,7 +541,8 @@ export default function SubscribersPage() {
                     type="text"
                     value={formFirstName}
                     onChange={(e) => setFormFirstName(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+                    style={{ color: "#0f172a" }}
                     placeholder="Jane"
                   />
                 </div>
@@ -546,7 +552,8 @@ export default function SubscribersPage() {
                     type="text"
                     value={formLastName}
                     onChange={(e) => setFormLastName(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+                    style={{ color: "#0f172a" }}
                     placeholder="Doe"
                   />
                 </div>
@@ -557,12 +564,13 @@ export default function SubscribersPage() {
                 <select
                   value={formStatus}
                   onChange={(e) => setFormStatus(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+                  style={{ color: "#0f172a" }}
                 >
-                  <option value="subscribed">Subscribed</option>
-                  <option value="unsubscribed">Unsubscribed</option>
-                  <option value="pending">Pending Opt-In</option>
-                  <option value="bounced">Bounced</option>
+                  <option value="subscribed" style={{ color: "#0f172a" }}>Subscribed</option>
+                  <option value="unsubscribed" style={{ color: "#0f172a" }}>Unsubscribed</option>
+                  <option value="pending" style={{ color: "#0f172a" }}>Pending Opt-In</option>
+                  <option value="bounced" style={{ color: "#0f172a" }}>Bounced</option>
                 </select>
               </div>
 
@@ -572,7 +580,8 @@ export default function SubscribersPage() {
                   type="text"
                   value={formListsText}
                   onChange={(e) => setFormListsText(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+                  style={{ color: "#0f172a" }}
                   placeholder="Newsletter, Webinar Confirmations"
                 />
               </div>
@@ -583,7 +592,8 @@ export default function SubscribersPage() {
                   type="text"
                   value={formTagsText}
                   onChange={(e) => setFormTagsText(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+                  style={{ color: "#0f172a" }}
                   placeholder="Webinar-04, Essential-Oils"
                 />
               </div>

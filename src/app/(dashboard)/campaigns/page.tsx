@@ -13,7 +13,8 @@ import {
   AlertCircle,
   Eye,
   Calendar,
-  X
+  X,
+  RotateCcw
 } from "lucide-react";
 
 interface Campaign {
@@ -73,9 +74,15 @@ export default function CampaignsPage() {
   const [formName, setFormName] = useState("");
   const [formSubject, setFormSubject] = useState("");
   const [formSenderName, setFormSenderName] = useState("Pratipal");
-  const [formSenderEmail, setFormSenderEmail] = useState("");
+  const [formSenderEmail, setFormSenderEmail] = useState("contact@notifications.pratipal.in");
   const [formReplyTo, setFormReplyTo] = useState("");
   const [formTemplateId, setFormTemplateId] = useState("");
+  
+  // Test Send States
+  const [showTestModal, setShowTestModal] = useState(false);
+  const [testCampaignId, setTestCampaignId] = useState<string | null>(null);
+  const [testRecipientEmail, setTestRecipientEmail] = useState("");
+  const [sendingTest, setSendingTest] = useState(false);
   
   const [audienceAll, setAudienceAll] = useState(true);
   const [audienceListsText, setAudienceListsText] = useState("");
@@ -88,9 +95,33 @@ export default function CampaignsPage() {
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
 
+  // Rerun States
+  const [showRerunModal, setShowRerunModal] = useState(false);
+  const [rerunCampaignId, setRerunCampaignId] = useState<string | null>(null);
+  const [rerunCampaignName, setRerunCampaignName] = useState("");
+  const [rerunScheduleType, setRerunScheduleType] = useState<"immediate" | "scheduled">("immediate");
+  const [rerunScheduledAt, setRerunScheduledAt] = useState("");
+  const [rerunning, setRerunning] = useState(false);
+
+  const [dateFilter, setDateFilter] = useState<"all" | "week" | "month" | "6months" | "year">("all");
+
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Filter campaigns by date
+  const filteredCampaigns = campaigns.filter((camp) => {
+    if (dateFilter === "all") return true;
+    const createdAt = new Date(camp.created_at);
+    const now = new Date();
+    const diffMs = now.getTime() - createdAt.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    if (dateFilter === "week") return diffDays <= 7;
+    if (dateFilter === "month") return diffDays <= 30;
+    if (dateFilter === "6months") return diffDays <= 180;
+    if (dateFilter === "year") return diffDays <= 365;
+    return true;
+  });
 
   const showNotification = (text: string, type: "success" | "error" = "success") => {
     setNotification({ text, type });
@@ -124,9 +155,6 @@ export default function CampaignsPage() {
         const sData = await sRes.json();
         const verifiedSenders = (sData || []).filter((s: any) => s.verification_status === "verified");
         setSenders(verifiedSenders);
-        if (verifiedSenders.length > 0) {
-          setFormSenderEmail(verifiedSenders[0].email);
-        }
       }
 
       // 3. Fetch list and tag options from subscribers endpoint
@@ -187,6 +215,62 @@ export default function CampaignsPage() {
     }
   };
 
+  const handleSendCampaignTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testCampaignId || !testRecipientEmail) return;
+
+    setSendingTest(true);
+    try {
+      const res = await fetch(`/api/campaigns/${testCampaignId}/test-send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: testRecipientEmail }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showNotification("Test email sent successfully to your inbox!");
+        setShowTestModal(false);
+        setTestRecipientEmail("");
+      } else {
+        showNotification(data.error || "Failed to send test email", "error");
+      }
+    } catch {
+      showNotification("Network error occurred", "error");
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
+  const handleRerunSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rerunCampaignId) return;
+
+    setRerunning(true);
+    try {
+      const res = await fetch(`/api/campaigns/${rerunCampaignId}/rerun`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          schedule_type: rerunScheduleType,
+          scheduled_at: rerunScheduleType === "scheduled" ? rerunScheduledAt : undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        showNotification("Campaign cloned and scheduled/sent successfully!");
+        setShowRerunModal(false);
+        fetchCampaigns();
+      } else {
+        showNotification(data.error || "Failed to rerun campaign", "error");
+      }
+    } catch {
+      showNotification("Network error occurred", "error");
+    } finally {
+      setRerunning(false);
+    }
+  };
+
   // Submit wizard campaign creation
   const handleWizardSubmit = async () => {
     if (!formName || !formSubject || !formSenderEmail || !formTemplateId) {
@@ -241,6 +325,7 @@ export default function CampaignsPage() {
     setFormName("");
     setFormSubject("");
     setFormSenderName("Pratipal");
+    setFormSenderEmail("contact@notifications.pratipal.in");
     setFormReplyTo("");
     setFormTemplateId("");
     setAudienceAll(true);
@@ -264,7 +349,7 @@ export default function CampaignsPage() {
     <div className="space-y-6">
       {/* Notifications */}
       {notification && (
-        <div className={`fixed bottom-4 right-4 z-50 p-4 rounded-xl shadow-lg border text-sm flex items-center gap-2 animate-bounce ${
+        <div className={`fixed bottom-4 right-4 z-[9999] p-4 rounded-xl shadow-lg border text-sm flex items-center gap-2 animate-bounce ${
           notification.type === "success" 
             ? "bg-emerald-50 text-emerald-800 border-emerald-200" 
             : "bg-rose-50 text-rose-800 border-rose-200"
@@ -283,10 +368,6 @@ export default function CampaignsPage() {
         <div>
           <button
             onClick={() => {
-              if (senders.length === 0) {
-                alert("Please verify at least one Sender Email in Settings first before building a campaign!");
-                return;
-              }
               resetWizard();
               setShowWizard(true);
             }}
@@ -299,13 +380,44 @@ export default function CampaignsPage() {
 
       {/* Campaign Lists */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        {/* Date Filter Bar */}
+        <div className="flex items-center gap-2 px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex-wrap">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Filter by Date:</span>
+          {([
+            { value: "all", label: "All Time" },
+            { value: "week", label: "Last Week" },
+            { value: "month", label: "Last Month" },
+            { value: "6months", label: "Last 6 Months" },
+            { value: "year", label: "Last Year" },
+          ] as const).map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setDateFilter(opt.value)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                dateFilter === opt.value
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-emerald-400 hover:text-emerald-600"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+          {dateFilter !== "all" && (
+            <span className="ml-auto text-[10px] text-slate-400 font-medium">
+              {filteredCampaigns.length} of {campaigns.length} campaigns
+            </span>
+          )}
+        </div>
+
         {loading ? (
           <div className="py-20 text-center">
             <div className="h-8 w-8 border-4 border-slate-200 border-t-emerald-600 rounded-full animate-spin mx-auto" />
           </div>
-        ) : campaigns.length === 0 ? (
+        ) : filteredCampaigns.length === 0 ? (
           <div className="p-12 text-center text-slate-400 text-sm">
-            No email campaigns created yet. Click "Start Campaign" to build your first email sequence.
+            {campaigns.length === 0
+              ? 'No email campaigns created yet. Click "Start Campaign" to build your first email sequence.'
+              : `No campaigns found for the selected time period.`}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -321,7 +433,7 @@ export default function CampaignsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
-                {campaigns.map((camp) => {
+                {filteredCampaigns.map((camp) => {
                   const tplName = typeof camp.template_id === "object" ? camp.template_id.name : "Custom Template";
                   const openPct = camp.stats.sent ? ((camp.stats.opens / camp.stats.sent) * 100).toFixed(1) : "0";
                   const clickPct = camp.stats.sent ? ((camp.stats.clicks / camp.stats.sent) * 100).toFixed(1) : "0";
@@ -374,6 +486,30 @@ export default function CampaignsPage() {
                           title="View Campaign Details"
                         >
                           <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setTestCampaignId(camp.id);
+                            setShowTestModal(true);
+                            setTestRecipientEmail("");
+                          }}
+                          className="p-1.5 hover:bg-emerald-50 text-slate-500 hover:text-emerald-600 rounded-lg transition-all inline-flex cursor-pointer border border-emerald-100"
+                          title="Send Test Email"
+                        >
+                          <Send className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setRerunCampaignId(camp.id);
+                            setRerunCampaignName(camp.name);
+                            setRerunScheduleType("immediate");
+                            setRerunScheduledAt("");
+                            setShowRerunModal(true);
+                          }}
+                          className="p-1.5 hover:bg-emerald-55/35 text-slate-500 hover:text-emerald-600 rounded-lg transition-all inline-flex cursor-pointer border border-emerald-100"
+                          title="Rerun Campaign"
+                        >
+                          <RotateCcw className="h-4 w-4" />
                         </button>
                         {camp.status === "sending" && (
                           <button
@@ -475,33 +611,7 @@ export default function CampaignsPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-500">Sender Display Name *</label>
-                      <input
-                        type="text"
-                        required
-                        value={formSenderName}
-                        onChange={(e) => setFormSenderName(e.target.value)}
-                        placeholder="e.g. Pratipal Care"
-                        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                        style={{ color: "#0f172a" }}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-500">Verified Sender Email *</label>
-                      <select
-                        value={formSenderEmail}
-                        onChange={(e) => setFormSenderEmail(e.target.value)}
-                        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 appearance-none bg-white"
-                        style={{ color: "#0f172a" }}
-                      >
-                        {senders.map((s) => (
-                          <option key={s.id} value={s.email}>{s.email}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                  {/* Hidden sender details default to Pratipal and verified AWS SES email */}
 
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-500">Reply-To Address (Optional)</label>
@@ -632,16 +742,89 @@ export default function CampaignsPage() {
                     {scheduleType === "scheduled" && (
                       <div className="space-y-1 animate-fade-in">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Choose Dispatch Date & Time *</label>
-                        <input
-                          type="datetime-local"
-                          required
-                          value={scheduledAt}
-                          onChange={(e) => setScheduledAt(e.target.value)}
-                          className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                          style={{ color: "#0f172a" }}
-                        />
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="datetime-local"
+                            required
+                            value={scheduledAt}
+                            onChange={(e) => setScheduledAt(e.target.value)}
+                            className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+                            style={{ color: "#0f172a" }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!scheduledAt) return;
+                              showNotification(`Campaign scheduled for ${new Date(scheduledAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`, "success");
+                            }}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all cursor-pointer shadow-sm shrink-0"
+                          >
+                            OK
+                          </button>
+                        </div>
                       </div>
                     )}
+                  </div>
+
+                  {/* Test Dispatch Section */}
+                  <div className="space-y-3 border-t border-slate-100 pt-4">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Test Campaign Delivery</span>
+                    <p className="text-slate-505 text-xs leading-relaxed">
+                      Send a single test run of this campaign's selected template to check its layout and deliverability.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        placeholder="you@example.com"
+                        value={testRecipientEmail}
+                        onChange={(e) => setTestRecipientEmail(e.target.value)}
+                        className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+                        style={{ color: "#0f172a" }}
+                      />
+                      <button
+                        type="button"
+                        disabled={sendingTest}
+                        onClick={async () => {
+                          if (!testRecipientEmail) {
+                            showNotification("Please enter a test recipient email address", "error");
+                            return;
+                          }
+                          const selectedTemplate = templates.find(t => t.id === formTemplateId);
+                          if (!selectedTemplate) {
+                            showNotification("Please go back and select a template first", "error");
+                            return;
+                          }
+                          setSendingTest(true);
+                          try {
+                            const res = await fetch("/api/test-send", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                to: testRecipientEmail,
+                                subject: `[TEST] ${formSubject}`,
+                                html: selectedTemplate.html_content,
+                                fromName: formSenderName,
+                                fromEmail: formSenderEmail,
+                              }),
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                              showNotification("Test email sent successfully!");
+                            } else {
+                              showNotification(data.error || "Failed to send test", "error");
+                            }
+                          } catch {
+                            showNotification("Network error occurred", "error");
+                          } finally {
+                            setSendingTest(false);
+                          }
+                        }}
+                        className="px-4 py-2 bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 font-semibold rounded-xl text-xs transition-colors border border-slate-200 hover:border-emerald-250 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+                      >
+                        {sendingTest ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                        Send Test
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -784,51 +967,39 @@ export default function CampaignsPage() {
                 <span className="text-xs font-bold text-slate-450 uppercase tracking-wider block">Campaign Performance Metrics</span>
                 
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="border border-slate-150 p-3 rounded-xl text-center bg-slate-50/30">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Dispatched</span>
+                  <div className="border border-teal-100 p-3 rounded-xl text-center bg-teal-50/30">
+                    <span className="text-[9px] font-bold text-teal-600 uppercase block">Delivered</span>
                     <span className="font-mono text-base font-bold text-slate-800 mt-1 block">
-                      {selectedCampaign.stats.sent}
-                    </span>
-                  </div>
-                  
-                  <div className="border border-slate-150 p-3 rounded-xl text-center bg-slate-50/30">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Unique Opens</span>
-                    <span className="font-mono text-base font-bold text-slate-800 mt-1 block">
-                      {selectedCampaign.stats.opens}
+                      {Math.max(0, (selectedCampaign.stats.sent || 0) - (selectedCampaign.stats.bounces || 0) - (selectedCampaign.stats.complaints || 0))}
                     </span>
                     <span className="text-[9px] text-slate-400 block mt-0.5">
-                      {selectedCampaign.stats.sent ? ((selectedCampaign.stats.opens / selectedCampaign.stats.sent) * 100).toFixed(1) : "0"}%
+                      {selectedCampaign.stats.sent
+                        ? (((Math.max(0, (selectedCampaign.stats.sent || 0) - (selectedCampaign.stats.bounces || 0) - (selectedCampaign.stats.complaints || 0))) / selectedCampaign.stats.sent) * 100).toFixed(1)
+                        : "0"}%
                     </span>
                   </div>
 
-                  <div className="border border-slate-150 p-3 rounded-xl text-center bg-slate-50/30">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Unique Clicks</span>
+                  <div className="border border-rose-100 p-3 rounded-xl text-center bg-rose-50/30">
+                    <span className="text-[9px] font-bold text-rose-500 uppercase block">Unsuccessful</span>
                     <span className="font-mono text-base font-bold text-slate-800 mt-1 block">
-                      {selectedCampaign.stats.clicks}
+                      {(selectedCampaign.stats.bounces || 0) + (selectedCampaign.stats.complaints || 0)}
                     </span>
                     <span className="text-[9px] text-slate-400 block mt-0.5">
-                      {selectedCampaign.stats.sent ? ((selectedCampaign.stats.clicks / selectedCampaign.stats.sent) * 100).toFixed(1) : "0"}%
-                    </span>
-                  </div>
-
-                  <div className="border border-slate-150 p-3 rounded-xl text-center bg-slate-50/30">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Bounces</span>
-                    <span className="font-mono text-sm font-bold text-slate-800 mt-1 block">
-                      {selectedCampaign.stats.bounces}
-                    </span>
-                  </div>
-
-                  <div className="border border-slate-150 p-3 rounded-xl text-center bg-slate-50/30">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Complaints</span>
-                    <span className="font-mono text-sm font-bold text-slate-800 mt-1 block">
-                      {selectedCampaign.stats.complaints}
+                      {selectedCampaign.stats.sent
+                        ? ((((selectedCampaign.stats.bounces || 0) + (selectedCampaign.stats.complaints || 0)) / selectedCampaign.stats.sent) * 100).toFixed(1)
+                        : "0"}%
                     </span>
                   </div>
 
                   <div className="border border-slate-150 p-3 rounded-xl text-center bg-slate-50/30">
                     <span className="text-[9px] font-bold text-slate-400 uppercase block">Unsubscribed</span>
-                    <span className="font-mono text-sm font-bold text-slate-800 mt-1 block">
-                      {selectedCampaign.stats.unsubscribed}
+                    <span className="font-mono text-base font-bold text-slate-800 mt-1 block">
+                      {selectedCampaign.stats.unsubscribed || 0}
+                    </span>
+                    <span className="text-[9px] text-slate-400 block mt-0.5">
+                      {selectedCampaign.stats.sent
+                        ? (((selectedCampaign.stats.unsubscribed || 0) / selectedCampaign.stats.sent) * 100).toFixed(1)
+                        : "0"}%
                     </span>
                   </div>
                 </div>
@@ -846,6 +1017,190 @@ export default function CampaignsPage() {
               >
                 Close Info Sheet
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Test Email Modal */}
+      {showTestModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center animate-fade-in text-slate-800">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-100 shadow-2xl p-6 relative animate-scale-up">
+            <button 
+              onClick={() => {
+                setShowTestModal(false);
+                setTestCampaignId(null);
+                setTestRecipientEmail("");
+              }}
+              className="absolute top-4 right-4 p-1.5 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+            >
+              <X className="h-5 w-5 text-slate-400 hover:text-slate-600" />
+            </button>
+
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Send className="h-5 w-5 text-emerald-600" />
+                <h3 className="text-lg font-bold text-slate-800">Send Test Email</h3>
+              </div>
+              <p className="text-slate-500 text-xs leading-relaxed">
+                Test the email layout and delivery using your active AWS SES connection. The subject line will be prefixed with <code className="bg-slate-100 px-1 py-0.5 rounded text-rose-600">[TEST]</code>.
+              </p>
+
+              <form onSubmit={handleSendCampaignTest} className="space-y-4 pt-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500">Recipient Email Address *</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="e.g. you@example.com"
+                    value={testRecipientEmail}
+                    onChange={(e) => setTestRecipientEmail(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+                    style={{ color: "#0f172a" }}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTestModal(false);
+                      setTestCampaignId(null);
+                      setTestRecipientEmail("");
+                    }}
+                    className="px-4 py-2 border border-slate-200 hover:bg-slate-50 font-semibold rounded-xl text-xs transition-colors cursor-pointer text-slate-600 bg-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={sendingTest}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                  >
+                    {sendingTest ? (
+                      <>
+                        <Clock className="h-3 w-3 animate-spin" /> Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-3 w-3" /> Send Test
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Rerun Campaign Modal */}
+      {showRerunModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center animate-fade-in text-slate-800">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-100 shadow-2xl p-6 relative animate-scale-up">
+            <button 
+              onClick={() => {
+                setShowRerunModal(false);
+                setRerunCampaignId(null);
+                setRerunCampaignName("");
+              }}
+              className="absolute top-4 right-4 p-1.5 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+            >
+              <X className="h-5 w-5 text-slate-400 hover:text-slate-600" />
+            </button>
+
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="h-5 w-5 text-emerald-600" />
+                <h3 className="text-lg font-bold text-slate-800">Rerun Campaign</h3>
+              </div>
+              <p className="text-slate-500 text-xs leading-relaxed">
+                You are about to duplicate and rerun the campaign <span className="font-semibold text-slate-700">"{rerunCampaignName}"</span>. Choose when to dispatch the copied campaign below.
+              </p>
+
+              <form onSubmit={handleRerunSubmit} className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 block">Dispatch Schedule</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRerunScheduleType("immediate")}
+                      className={`py-2 px-3 rounded-xl border text-xs font-semibold cursor-pointer text-center transition-all ${
+                        rerunScheduleType === "immediate"
+                          ? "bg-emerald-50 border-emerald-500 text-emerald-600"
+                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      Send Immediately
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRerunScheduleType("scheduled")}
+                      className={`py-2 px-3 rounded-xl border text-xs font-semibold cursor-pointer text-center transition-all ${
+                        rerunScheduleType === "scheduled"
+                          ? "bg-emerald-50 border-emerald-500 text-emerald-600"
+                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      Schedule for Later
+                    </button>
+                  </div>
+                </div>
+
+                {rerunScheduleType === "scheduled" && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500">Scheduled Date &amp; Time *</label>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="datetime-local"
+                        required
+                        value={rerunScheduledAt}
+                        onChange={(e) => setRerunScheduledAt(e.target.value)}
+                        className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-800"
+                        style={{ color: "#0f172a" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!rerunScheduledAt) return;
+                          showNotification(`Campaign scheduled for ${new Date(rerunScheduledAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`, "success");
+                        }}
+                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all cursor-pointer shadow-sm shrink-0"
+                      >
+                        OK
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRerunModal(false);
+                      setRerunCampaignId(null);
+                      setRerunCampaignName("");
+                    }}
+                    className="px-4 py-2 border border-slate-200 hover:bg-slate-50 font-semibold rounded-xl text-xs transition-colors cursor-pointer text-slate-600 bg-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={rerunning}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                  >
+                    {rerunning ? (
+                      <>
+                        <Clock className="h-3 w-3 animate-spin" /> Launching...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="h-3 w-3" /> Run Campaign
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
