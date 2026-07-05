@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getEmailProvider } from "@/providers/provider-factory";
-
 import { checkApiAuth } from "@/lib/auth-helper";
 
-const CRON_SECRET = process.env.CRON_SECRET || "fallback-cron-secret-change-me";
-
 export async function POST(req: NextRequest) {
-  // Allow either admin session cookies OR Bearer cron tokens
   const admin = checkApiAuth(req);
   
   if (!admin) {
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader ? authHeader.replace("Bearer ", "") : "";
-
-    if (token !== CRON_SECRET) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
