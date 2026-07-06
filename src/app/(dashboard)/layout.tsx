@@ -2,14 +2,15 @@ import React from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { 
-  LayoutDashboard, 
-  Users, 
-  Send, 
-  FileCode, 
-  Home, 
+import {
+  LayoutDashboard,
+  Users,
+  Send,
+  FileCode,
+  Home,
   LogOut,
-  Mail
+  Mail,
+  Video
 } from "lucide-react";
 
 interface NavItem {
@@ -24,6 +25,7 @@ const navItems: NavItem[] = [
   { label: "Campaigns", href: "/campaigns", icon: Send },
   { label: "Templates", href: "/templates", icon: FileCode },
   { label: "Landing Page", href: "/landing-pages", icon: Home },
+  { label: "Webinars", href: "/webinars", icon: Video },
 ];
 
 export default async function DashboardLayout({
