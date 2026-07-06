@@ -108,9 +108,9 @@ export default function WebinarsListPage() {
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Webinars</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Reminders</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Synced from webinar-flagged landing pages on the main website — set up reminder emails per webinar.
+            Synced from registration windows on the main website — set up automated email reminders.
           </p>
         </div>
         <button
@@ -132,9 +132,9 @@ export default function WebinarsListPage() {
           <div className="h-16 w-16 rounded-2xl bg-emerald-50 flex items-center justify-center mb-5">
             <Video className="h-8 w-8 text-emerald-500" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">No webinars yet</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">No reminders yet</h3>
           <p className="text-sm text-gray-500 mb-6 text-center max-w-sm">
-            Flag a landing page as a webinar on the main website with a start date/time, then hit "Sync Now".
+            Sync landing page registration windows to set up automated email reminders.
           </p>
           <button
             onClick={handleSync}

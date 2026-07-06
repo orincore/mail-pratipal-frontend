@@ -57,11 +57,9 @@ interface TemplateOption {
   subject?: string;
 }
 
-interface SenderOption {
-  id: string;
-  email: string;
-  verification_status: string;
-}
+// The one verified SES sender — hardcoded so the form doesn't expose it.
+const VERIFIED_SENDER_NAME = "Pratipal";
+const VERIFIED_SENDER_EMAIL = "contact@notifications.pratipal.in";
 
 const PRESETS: { key: string; label: string }[] = [
   { key: "3_days_before", label: "3 days before" },
@@ -136,7 +134,6 @@ export default function WebinarDetailPage() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [registrants, setRegistrants] = useState<Registrant[]>([]);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
-  const [senders, setSenders] = useState<SenderOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
@@ -146,11 +143,11 @@ export default function WebinarDetailPage() {
   const [customAmount, setCustomAmount] = useState(1);
   const [customUnit, setCustomUnit] = useState<"minutes" | "hours" | "days">("hours");
   const [customAbsolute, setCustomAbsolute] = useState("");
+  const [pickerDate, setPickerDate] = useState("");
+  const [pickerTime, setPickerTime] = useState("09:00");
   const [reminderName, setReminderName] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [subject, setSubject] = useState("");
-  const [senderName, setSenderName] = useState("Pratipal");
-  const [senderEmail, setSenderEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const [testReminder, setTestReminder] = useState<Reminder | null>(null);
@@ -180,14 +177,10 @@ export default function WebinarDetailPage() {
 
   const loadFormOptions = useCallback(async () => {
     try {
-      const [tRes, sRes] = await Promise.all([fetch("/api/templates"), fetch("/api/senders")]);
-      if (tRes.ok) setTemplates((await tRes.json()) || []);
-      if (sRes.ok) {
-        const sData = await sRes.json();
-        setSenders((sData || []).filter((s: any) => s.verification_status === "verified"));
-      }
+      const res = await fetch("/api/templates");
+      if (res.ok) setTemplates((await res.json()) || []);
     } catch {
-      // non-fatal, reminder creation just won't have picker options
+      // non-fatal
     }
   }, []);
 
@@ -198,28 +191,29 @@ export default function WebinarDetailPage() {
 
   function openModal(preset: string | null) {
     setModalPreset(preset);
-    setReminderName(preset ? PRESETS.find((p) => p.key === preset)?.label || "" : "");
+    setReminderName("");
     setCustomMode("relative");
     setCustomAmount(1);
     setCustomUnit("hours");
     setCustomAbsolute("");
-    setTemplateId(templates[0]?.id || "");
-    setSubject(templates[0]?.subject || "");
-    setSenderEmail(senders[0]?.email || "");
+    setPickerDate("");
+    setPickerTime("09:00");
+    setTemplateId("");
+    setSubject("");
     setShowModal(true);
   }
 
   async function handleCreateReminder(e: React.FormEvent) {
     e.preventDefault();
-    if (!webinar || !templateId || !subject || !senderName || !senderEmail) return;
+    if (!webinar || !templateId || !subject) return;
     setSubmitting(true);
 
     const body: any = {
       name: reminderName,
       template_id: templateId,
       subject,
-      sender_name: senderName,
-      sender_email: senderEmail,
+      sender_name: VERIFIED_SENDER_NAME,
+      sender_email: VERIFIED_SENDER_EMAIL,
     };
 
     if (modalPreset) {
@@ -539,12 +533,12 @@ export default function WebinarDetailPage() {
                         required
                         value={customAmount}
                         onChange={(e) => setCustomAmount(Number(e.target.value))}
-                        className="w-20 border border-slate-200 rounded-xl px-3 py-2 text-sm"
+                        className="w-20 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 bg-white"
                       />
                       <select
                         value={customUnit}
                         onChange={(e) => setCustomUnit(e.target.value as any)}
-                        className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm"
+                        className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 bg-white"
                       >
                         <option value="minutes">Minutes before</option>
                         <option value="hours">Hours before</option>
@@ -552,13 +546,55 @@ export default function WebinarDetailPage() {
                       </select>
                     </div>
                   ) : (
-                    <input
-                      type="datetime-local"
-                      required
-                      value={customAbsolute}
-                      onChange={(e) => setCustomAbsolute(e.target.value)}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"
-                    />
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Date</label>
+                          <input
+                            type="date"
+                            value={pickerDate}
+                            onChange={(e) => setPickerDate(e.target.value)}
+                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 bg-white cursor-pointer"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Time</label>
+                          <input
+                            type="time"
+                            value={pickerTime}
+                            onChange={(e) => setPickerTime(e.target.value)}
+                            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 bg-white cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                      {customAbsolute ? (
+                        <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+                          <span className="text-xs font-semibold text-emerald-700">
+                            Set to: {new Date(customAbsolute.replace("T", " ")).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => { setCustomAbsolute(""); setPickerDate(""); setPickerTime("09:00"); }}
+                            className="text-xs text-emerald-600 hover:text-emerald-800 font-semibold cursor-pointer"
+                          >
+                            Change
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={!pickerDate || !pickerTime}
+                          onClick={() => {
+                            if (pickerDate && pickerTime) {
+                              setCustomAbsolute(`${pickerDate}T${pickerTime}`);
+                            }
+                          }}
+                          className="w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all cursor-pointer"
+                        >
+                          ✓ Confirm Date &amp; Time
+                        </button>
+                      )}
+                    </div>
                   )}
                   <p className="text-[10px] text-slate-400">Interpreted in the webinar's timezone: {webinar.timezone}</p>
                 </div>
@@ -569,7 +605,8 @@ export default function WebinarDetailPage() {
                 <input
                   value={reminderName}
                   onChange={(e) => setReminderName(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"
+                  placeholder={modalPreset ? PRESETS.find((p) => p.key === modalPreset)?.label : "e.g. Day-before reminder"}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
                   required
                 />
               </div>
@@ -584,9 +621,9 @@ export default function WebinarDetailPage() {
                     const tpl = templates.find((t) => t.id === e.target.value);
                     if (tpl?.subject) setSubject(tpl.subject);
                   }}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900"
                 >
-                  <option value="">-- Select a template --</option>
+                  <option value="" disabled>Select a template</option>
                   {templates.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name}
@@ -601,36 +638,9 @@ export default function WebinarDetailPage() {
                   required
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"
+                  placeholder="e.g. Your webinar is starting soon!"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
                 />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-500">Sender Name *</label>
-                  <input
-                    required
-                    value={senderName}
-                    onChange={(e) => setSenderName(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-500">Sender Email *</label>
-                  <select
-                    required
-                    value={senderEmail}
-                    onChange={(e) => setSenderEmail(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"
-                  >
-                    <option value="">-- Select --</option>
-                    {senders.map((s) => (
-                      <option key={s.id} value={s.email}>
-                        {s.email}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
 
               <button

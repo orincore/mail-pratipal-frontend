@@ -7,7 +7,6 @@ import {
   Users,
   Send,
   FileCode,
-  Home,
   LogOut,
   Mail,
   Video
@@ -24,8 +23,7 @@ const navItems: NavItem[] = [
   { label: "Subscribers", href: "/subscribers", icon: Users },
   { label: "Campaigns", href: "/campaigns", icon: Send },
   { label: "Templates", href: "/templates", icon: FileCode },
-  { label: "Landing Page", href: "/landing-pages", icon: Home },
-  { label: "Webinars", href: "/webinars", icon: Video },
+  { label: "Reminders", href: "/webinars", icon: Video },
 ];
 
 export default async function DashboardLayout({
