@@ -15,6 +15,7 @@ import {
 interface WebinarReminderSummary {
   id: string;
   dispatch_status: "pending" | "sending" | "sent" | "skipped";
+  whatsapp_dispatch_status?: "pending" | "sending" | "sent" | "skipped";
 }
 
 interface WebinarListItem {
@@ -147,7 +148,9 @@ export default function WebinarsListPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {webinars.map((w) => {
-            const sentCount = w.reminders.filter((r) => r.dispatch_status === "sent").length;
+            const sentCount = w.reminders.filter(
+              (r) => r.dispatch_status === "sent" || r.whatsapp_dispatch_status === "sent"
+            ).length;
             return (
               <Link
                 key={w.id}

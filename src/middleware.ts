@@ -12,6 +12,8 @@ export function middleware(request: NextRequest) {
     path.startsWith("/favicon.ico") ||
     path.startsWith("/api/track") ||
     path.startsWith("/api/jobs") ||
+    path.startsWith("/api/unsubscribe") ||
+    path.startsWith("/api/webhooks") ||
     path.startsWith("/unsubscribe")
   ) {
     return NextResponse.next();
@@ -47,6 +49,6 @@ export function middleware(request: NextRequest) {
 export const config = {
   // Apply middleware to all paths except the bypassed ones
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/track|api/jobs|unsubscribe).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/track|api/jobs|api/unsubscribe|api/webhooks|unsubscribe).*)",
   ],
 };

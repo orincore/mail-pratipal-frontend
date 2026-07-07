@@ -17,6 +17,8 @@ import {
   Ban,
   RotateCcw,
   Send,
+  Mail,
+  MessageCircle,
 } from "lucide-react";
 
 interface WebinarDetail {
@@ -29,19 +31,28 @@ interface WebinarDetail {
   registrant_count: number;
 }
 
+type Channel = "email" | "whatsapp" | "both";
+type DispatchStatus = "pending" | "sending" | "sent" | "skipped";
+
 interface Reminder {
   id: string;
   name: string;
   offset_type: "days_before" | "hours_before" | "minutes_before" | "at_start" | "custom";
   offset_value?: number;
   custom_at?: string;
-  subject: string;
-  sender_name: string;
-  sender_email: string;
+  channel: Channel;
+  subject?: string;
+  sender_name?: string;
+  sender_email?: string;
+  whatsapp_template?: string;
   status: "active" | "paused" | "cancelled";
   computed_send_at: string;
-  dispatch_status: "pending" | "sending" | "sent" | "skipped";
-  stats: { sent: number; delivered: number; opens: number; clicks: number; bounces: number };
+  dispatch_status: DispatchStatus;
+  whatsapp_dispatch_status: DispatchStatus;
+  stats: {
+    sent: number; delivered: number; opens: number; clicks: number; bounces: number;
+    whatsapp_sent: number; whatsapp_failed: number;
+  };
 }
 
 interface Registrant {
@@ -55,6 +66,13 @@ interface TemplateOption {
   id: string;
   name: string;
   subject?: string;
+}
+
+interface WhatsappTemplateOption {
+  name: string;
+  label: string;
+  description: string;
+  hasButton: boolean;
 }
 
 // The one verified SES sender — hardcoded so the form doesn't expose it.
@@ -134,6 +152,8 @@ export default function WebinarDetailPage() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [registrants, setRegistrants] = useState<Registrant[]>([]);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
+  const [whatsappTemplates, setWhatsappTemplates] = useState<WhatsappTemplateOption[]>([]);
+  const [defaultWhatsappForPreset, setDefaultWhatsappForPreset] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
@@ -146,13 +166,19 @@ export default function WebinarDetailPage() {
   const [pickerDate, setPickerDate] = useState("");
   const [pickerTime, setPickerTime] = useState("09:00");
   const [reminderName, setReminderName] = useState("");
+  const [channel, setChannel] = useState<Channel>("email");
   const [templateId, setTemplateId] = useState("");
   const [subject, setSubject] = useState("");
+  const [whatsappTemplate, setWhatsappTemplate] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const [testReminder, setTestReminder] = useState<Reminder | null>(null);
   const [testEmail, setTestEmail] = useState("");
   const [sendingTest, setSendingTest] = useState(false);
+
+  const [testWhatsappReminder, setTestWhatsappReminder] = useState<Reminder | null>(null);
+  const [testPhone, setTestPhone] = useState("");
+  const [sendingWhatsappTest, setSendingWhatsappTest] = useState(false);
 
   const showNotification = (text: string, type: "success" | "error" = "success") => {
     setNotification({ text, type });
@@ -182,6 +208,16 @@ export default function WebinarDetailPage() {
     } catch {
       // non-fatal
     }
+    try {
+      const res = await fetch("/api/webinars/meta/whatsapp-templates");
+      if (res.ok) {
+        const data = await res.json();
+        setWhatsappTemplates(data.templates ?? []);
+        setDefaultWhatsappForPreset(data.defaultForPreset ?? {});
+      }
+    } catch {
+      // non-fatal
+    }
   }, []);
 
   useEffect(() => {
@@ -198,22 +234,33 @@ export default function WebinarDetailPage() {
     setCustomAbsolute("");
     setPickerDate("");
     setPickerTime("09:00");
+    setChannel("email");
     setTemplateId("");
     setSubject("");
+    setWhatsappTemplate(preset ? defaultWhatsappForPreset[preset] || "" : "");
     setShowModal(true);
   }
 
+  const needsEmail = channel !== "whatsapp";
+  const needsWhatsapp = channel !== "email";
+
   async function handleCreateReminder(e: React.FormEvent) {
     e.preventDefault();
-    if (!webinar || !templateId || !subject) return;
+    if (!webinar) return;
+    if (needsEmail && (!templateId || !subject)) return;
+    if (needsWhatsapp && !whatsappTemplate) return;
     setSubmitting(true);
 
     const body: any = {
       name: reminderName,
-      template_id: templateId,
-      subject,
-      sender_name: VERIFIED_SENDER_NAME,
-      sender_email: VERIFIED_SENDER_EMAIL,
+      channel,
+      ...(needsEmail ? {
+        template_id: templateId,
+        subject,
+        sender_name: VERIFIED_SENDER_NAME,
+        sender_email: VERIFIED_SENDER_EMAIL,
+      } : {}),
+      ...(needsWhatsapp ? { whatsapp_template: whatsappTemplate } : {}),
     };
 
     if (modalPreset) {
@@ -298,6 +345,30 @@ export default function WebinarDetailPage() {
       showNotification(err.message || "Failed to send test email", "error");
     } finally {
       setSendingTest(false);
+    }
+  }
+
+  async function handleSendWhatsappTest(e: React.FormEvent) {
+    e.preventDefault();
+    if (!testWhatsappReminder || !testPhone.trim()) return;
+    setSendingWhatsappTest(true);
+    try {
+      const res = await fetch(`/api/webinars/${webinarId}/reminders/${testWhatsappReminder.id}/test-send-whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: testPhone.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to send test WhatsApp message");
+      }
+      showNotification(`Test WhatsApp message sent to ${testPhone.trim()}`);
+      setTestWhatsappReminder(null);
+      setTestPhone("");
+    } catch (err: any) {
+      showNotification(err.message || "Failed to send test WhatsApp message", "error");
+    } finally {
+      setSendingWhatsappTest(false);
     }
   }
 
@@ -431,44 +502,76 @@ export default function WebinarDetailPage() {
           <p className="text-sm text-slate-400 py-6 text-center">No reminders configured yet.</p>
         ) : (
           <div className="divide-y divide-slate-100">
-            {reminders.map((r) => (
-              <div key={r.id} className="py-3 flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="font-semibold text-sm text-slate-800">{r.name}</p>
-                  <p className="text-xs text-slate-400">
-                    {describeOffset(r)} · sends {formatInZone(r.computed_send_at, webinar.timezone)}
-                  </p>
+            {reminders.map((r) => {
+              const showEmail = r.channel !== "whatsapp";
+              const showWhatsapp = r.channel !== "email";
+              const busy =
+                (showEmail && ["sent", "sending"].includes(r.dispatch_status)) ||
+                (showWhatsapp && ["sent", "sending"].includes(r.whatsapp_dispatch_status));
+              return (
+                <div key={r.id} className="py-3 flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-slate-800">{r.name}</p>
+                    <p className="text-xs text-slate-400">
+                      {describeOffset(r)} · sends {formatInZone(r.computed_send_at, webinar.timezone)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {showEmail && (
+                      <span className="inline-flex items-center gap-1">
+                        <Mail className="h-3 w-3 text-slate-400" />
+                        {dispatchBadge(r.dispatch_status)}
+                      </span>
+                    )}
+                    {showWhatsapp && (
+                      <span className="inline-flex items-center gap-1">
+                        <MessageCircle className="h-3 w-3 text-slate-400" />
+                        {dispatchBadge(r.whatsapp_dispatch_status)}
+                      </span>
+                    )}
+                    {showEmail && (
+                      <button
+                        onClick={() => {
+                          setTestReminder(r);
+                          setTestEmail("");
+                        }}
+                        className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
+                        title="Send a test email to see exactly how this looks"
+                      >
+                        <Send className="h-3.5 w-3.5" /> Test
+                      </button>
+                    )}
+                    {showWhatsapp && (
+                      <button
+                        onClick={() => {
+                          setTestWhatsappReminder(r);
+                          setTestPhone("");
+                        }}
+                        className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold cursor-pointer"
+                        title="Send a test WhatsApp message to see exactly how this looks"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" /> Test
+                      </button>
+                    )}
+                    <button
+                      onClick={() => toggleReminderStatus(r)}
+                      disabled={busy}
+                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                      title={r.status === "active" ? "Pause" : "Resume"}
+                    >
+                      {r.status === "active" ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                    </button>
+                    <button
+                      onClick={() => deleteReminder(r)}
+                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {dispatchBadge(r.dispatch_status)}
-                  <button
-                    onClick={() => {
-                      setTestReminder(r);
-                      setTestEmail("");
-                    }}
-                    className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold cursor-pointer"
-                    title="Send a test email to see exactly how this looks"
-                  >
-                    <Send className="h-3.5 w-3.5" /> Test
-                  </button>
-                  <button
-                    onClick={() => toggleReminderStatus(r)}
-                    disabled={r.dispatch_status === "sent" || r.dispatch_status === "sending"}
-                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                    title={r.status === "active" ? "Pause" : "Resume"}
-                  >
-                    {r.status === "active" ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                  </button>
-                  <button
-                    onClick={() => deleteReminder(r)}
-                    className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                    title="Delete"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -612,36 +715,90 @@ export default function WebinarDetailPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-500">Template *</label>
-                <select
-                  required
-                  value={templateId}
-                  onChange={(e) => {
-                    setTemplateId(e.target.value);
-                    const tpl = templates.find((t) => t.id === e.target.value);
-                    if (tpl?.subject) setSubject(tpl.subject);
-                  }}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900"
-                >
-                  <option value="" disabled>Select a template</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
+                <label className="text-xs font-semibold text-slate-500">Send via</label>
+                <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                  {(["email", "whatsapp", "both"] as Channel[]).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => {
+                        setChannel(c);
+                        if (c !== "email" && !whatsappTemplate && modalPreset) {
+                          setWhatsappTemplate(defaultWhatsappForPreset[modalPreset] || "");
+                        }
+                      }}
+                      className={`flex-1 py-1.5 rounded-md font-semibold text-xs cursor-pointer capitalize ${
+                        channel === c ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"
+                      }`}
+                    >
+                      {c}
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-500">Subject *</label>
-                <input
-                  required
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  placeholder="e.g. Your webinar is starting soon!"
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
-                />
-              </div>
+              {needsEmail && (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500">Email Template *</label>
+                    <select
+                      required
+                      value={templateId}
+                      onChange={(e) => {
+                        setTemplateId(e.target.value);
+                        const tpl = templates.find((t) => t.id === e.target.value);
+                        if (tpl?.subject) setSubject(tpl.subject);
+                      }}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900"
+                    >
+                      <option value="" disabled>Select a template</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500">Subject *</label>
+                    <input
+                      required
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      placeholder="e.g. Your webinar is starting soon!"
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
+                    />
+                  </div>
+                </>
+              )}
+
+              {needsWhatsapp && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500">WhatsApp Template *</label>
+                  <select
+                    required
+                    value={whatsappTemplate}
+                    onChange={(e) => setWhatsappTemplate(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900"
+                  >
+                    <option value="" disabled>Select an approved template</option>
+                    {whatsappTemplates.map((t) => (
+                      <option key={t.name} value={t.name}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                  {whatsappTemplate && (
+                    <p className="text-[10px] text-slate-400">
+                      {whatsappTemplates.find((t) => t.name === whatsappTemplate)?.description}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-slate-400">
+                    Only registrants with a WhatsApp number on file will receive this — others are skipped automatically.
+                  </p>
+                </div>
+              )}
 
               <button
                 type="submit"
@@ -689,6 +846,46 @@ export default function WebinarDetailPage() {
               >
                 <Send className="h-3.5 w-3.5" />
                 {sendingTest ? "Sending..." : "Send Test Email"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {testWhatsappReminder && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-xl max-w-sm w-full overflow-hidden animate-fadeIn text-left">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="font-bold text-slate-800 text-base">Send Test WhatsApp Message</h3>
+              <button onClick={() => setTestWhatsappReminder(null)} className="p-1 hover:bg-slate-100 text-slate-400 rounded-lg cursor-pointer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form onSubmit={handleSendWhatsappTest} className="p-6 space-y-4">
+              <p className="text-xs text-slate-500">
+                Sends "<span className="font-semibold text-slate-700">{testWhatsappReminder.name}</span>" using its
+                real approved template — filled with this webinar's actual title/date/time so you see exactly what
+                registrants will get.
+              </p>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-500">Send test to (with country code)</label>
+                <input
+                  type="tel"
+                  required
+                  autoFocus
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  placeholder="+919876543210"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={sendingWhatsappTest}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-all cursor-pointer inline-flex items-center justify-center gap-1.5"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                {sendingWhatsappTest ? "Sending..." : "Send Test WhatsApp Message"}
               </button>
             </form>
           </div>
