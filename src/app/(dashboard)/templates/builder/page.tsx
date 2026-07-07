@@ -222,16 +222,20 @@ function BuilderContent() {
   useEffect(() => {
     if (!templateId) {
       const defaultHtml = `
-<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
-  <div style="background-color: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <h1 style="color: #0f172a; font-size: 24px; margin-top: 0;">Hello {{first_name}},</h1>
-    <p style="color: #475569; font-size: 15px; line-height: 1.6;">Welcome to your email template. You can customize this layout completely using the HTML editor or add block elements.</p>
-    
-    <div style="text-align: center; margin: 30px 0;">
-      <a href="https://pratipal.in" style="background-color: #059669; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 8px; font-weight: bold; font-size: 14px;">Visit Website</a>
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 28px 16px; background-color: #f4f5f2;">
+  <div style="display: flex; align-items: center; gap: 10px; padding: 0 4px 20px;">
+    <img src="https://pratipal.in/assets/footer_logo.png" width="32" height="32" alt="Pratipal" style="display: block; border-radius: 8px;" />
+    <span style="font-size: 16px; font-weight: 700; color: #232d5f; letter-spacing: -0.01em;">Pratipal</span>
+  </div>
+  <div style="background-color: #ffffff; padding: 32px; border-radius: 16px; border: 1px solid #eae7e0; box-shadow: 0 1px 3px rgba(16,24,40,0.04);">
+    <h1 style="color: #1f2430; font-size: 21px; margin-top: 0;">Hello {{first_name}},</h1>
+    <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">Welcome to your email template. You can customize this layout completely using the HTML editor or add block elements.</p>
+
+    <div style="text-align: center; margin: 28px 0;">
+      <a href="https://pratipal.in" style="background-color: #d97745; color: #ffffff; text-decoration: none; padding: 13px 32px; border-radius: 10px; font-weight: 600; font-size: 14px;">Visit Website</a>
     </div>
-    
-    <p style="color: #475569; font-size: 15px; line-height: 1.6;">If you have any questions, reply to this email.</p>
+
+    <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">If you have any questions, reply to this email.</p>
   </div>
   {{unsubscribe}}
 </div>
