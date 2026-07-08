@@ -6,8 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "worker": "tsx src/scripts/worker.ts"
+    "lint": "eslint"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.1079.0",

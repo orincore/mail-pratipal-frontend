@@ -55,6 +55,50 @@ export function checkApiAuth(req: NextRequest): AuthenticatedUser | null {
 }
 
 /**
+ * Async version of API authentication checking.
+ * Checks the backend auth endpoint and falls back to local JWT token parsing.
+ */
+export async function checkApiAuthAsync(req: NextRequest): Promise<AuthenticatedUser | null> {
+  const token = req.cookies.get(COOKIE_NAME)?.value;
+  if (!token) return null;
+
+  try {
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3002";
+    const authRes = await fetch(`${backendUrl}/api/auth/me`, {
+      headers: {
+        Cookie: `${COOKIE_NAME}=${token}`,
+      },
+    });
+    if (authRes.ok) {
+      const data = await authRes.json();
+      if (data.user && data.user.role === "admin") {
+        return {
+          id: data.user.id || data.user._id || "",
+          email: data.user.email,
+          role: data.user.role,
+          full_name: data.user.full_name || null,
+        };
+      }
+    }
+  } catch (e) {
+    console.error("checkApiAuthAsync backend fetch failed:", e);
+  }
+
+  // Fallback to local token verification
+  const payload = verifyToken(token);
+  if (payload && payload.role === "admin") {
+    return {
+      id: payload.sub,
+      email: payload.email,
+      role: payload.role,
+      full_name: payload.full_name,
+    };
+  }
+
+  return null;
+}
+
+/**
  * Returns the URL to redirect to for admin login in the main application.
  */
 export function getLoginRedirectUrl(requestUrl: string): string {

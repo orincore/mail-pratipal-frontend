@@ -3,28 +3,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import {
-  LayoutDashboard,
-  Users,
-  Send,
-  FileCode,
-  LogOut,
-  Mail,
-  Video
+  Mail
 } from "lucide-react";
-
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-
-const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Subscribers", href: "/subscribers", icon: Users },
-  { label: "Campaigns", href: "/campaigns", icon: Send },
-  { label: "Templates", href: "/templates", icon: FileCode },
-  { label: "Reminders", href: "/webinars", icon: Video },
-];
+import SidebarNav from "./SidebarNav";
+import HeaderControls from "./HeaderControls";
 
 export default async function DashboardLayout({
   children,
@@ -64,75 +46,49 @@ export default async function DashboardLayout({
   const adminEmail = userPayload.email;
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+    <div className="flex h-screen bg-[#f3f5f0] overflow-hidden font-sans pt-1.5 px-4 pb-4 gap-6">
       {/* Sidebar Navigation */}
-      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between border-r border-slate-800 shadow-md">
-        <div>
+      <aside className="w-20 bg-white flex flex-col justify-start items-center pt-3 pb-6 rounded-[28px] border border-[#e2e8f0]/40 shadow-sm shrink-0">
+        <div className="flex flex-col items-center w-full">
           {/* Logo Brand Panel */}
-          <div className="h-16 flex items-center px-6 bg-slate-950 gap-2.5 border-b border-slate-800/50">
-            <div className="p-1.5 bg-emerald-600 rounded-lg text-white">
-              <Mail className="h-5 w-5" />
-            </div>
-            <div>
-              <span className="font-bold text-white tracking-wide text-sm block leading-none">Pratipal Mailer</span>
-              <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Campaign Console</span>
-            </div>
+          <div className="h-12 w-12 rounded-full overflow-hidden flex items-center justify-center mb-8 shrink-0 bg-white shadow-sm border border-slate-100/50 p-1">
+            <img src="/logo.png" alt="Pratipal Logo" className="max-h-full max-w-full object-contain" />
           </div>
 
           {/* Navigation Links */}
-          <nav className="p-4 space-y-1">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 hover:bg-slate-800 hover:text-white group"
-              >
-                <item.icon className="h-4.5 w-4.5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-
-        {/* User Info / Logout Panel */}
-        <div className="p-4 border-t border-slate-800/80 bg-slate-950/40">
-          <div className="flex items-center gap-3 mb-3 px-2">
-            <div className="h-9 w-9 bg-emerald-600/10 text-emerald-400 rounded-xl flex items-center justify-center font-bold text-sm border border-emerald-500/20">
-              {adminName[0].toUpperCase()}
-            </div>
-            <div className="overflow-hidden">
-              <p className="text-xs font-semibold text-white truncate leading-snug">{adminName}</p>
-              <p className="text-[10px] text-slate-500 truncate">{adminEmail}</p>
-            </div>
-          </div>
-          <a
-            href={`${process.env.NEXT_PUBLIC_MAIN_APP_URL || "http://localhost:3000"}/api/auth/logout`}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-800/50 hover:bg-rose-950/30 hover:text-rose-400 text-xs font-semibold text-slate-400 rounded-xl transition-all border border-slate-850"
-          >
-            <LogOut className="h-3.5 w-3.5" /> Logout Session
-          </a>
+          <SidebarNav />
         </div>
       </aside>
 
       {/* Main Panel Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header Panel */}
-        <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-8 shadow-sm z-10">
-          <div />
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-3 pb-2 mb-6 gap-4 shrink-0">
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight leading-none">
+              Hello, {adminName.split(" ")[0]}!
+            </h1>
+            <p className="text-slate-400 text-xs mt-1.5 font-medium">
+              Explore information and activity about your campaign console
+            </p>
+          </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <HeaderControls />
+
+            {/* Back Link */}
             <a
               href={`${process.env.NEXT_PUBLIC_MAIN_APP_URL || "http://localhost:3000"}/admin`}
-              className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3.5 py-1.5 rounded-lg transition-all"
+              className="text-xs font-bold text-slate-600 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/50 shadow-sm px-4 py-2.5 rounded-full transition-all shrink-0"
             >
-              ← Back to main admin panel
+              ← Admin Portal
             </a>
           </div>
         </header>
 
         {/* Content Port */}
-        <main className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-7xl mx-auto space-y-8">
+        <main className="flex-1 overflow-y-auto pr-1">
+          <div className="space-y-6">
             {children}
           </div>
         </main>
@@ -140,3 +96,4 @@ export default async function DashboardLayout({
     </div>
   );
 }
+
