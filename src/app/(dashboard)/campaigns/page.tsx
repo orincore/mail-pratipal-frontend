@@ -14,23 +14,28 @@ import {
   Eye,
   Calendar,
   X,
-  RotateCcw
+  RotateCcw,
+  MessageCircle
 } from "lucide-react";
 
 interface Campaign {
   id: string;
   name: string;
-  subject: string;
-  sender_name: string;
-  sender_email: string;
+  subject?: string;
+  sender_name?: string;
+  sender_email?: string;
   reply_to?: string;
-  template_id: { id: string; name: string } | string;
+  template_id?: { id: string; name: string } | string;
+  channel: "email" | "whatsapp" | "both";
+  whatsapp_template?: string;
   audience: {
     lists: string[];
     tags: string[];
     all: boolean;
   };
   status: "draft" | "scheduled" | "sending" | "sent" | "paused" | "cancelled";
+  dispatch_status: "pending" | "sending" | "sent" | "skipped";
+  whatsapp_dispatch_status: "pending" | "sending" | "sent" | "skipped";
   schedule_type: "immediate" | "scheduled";
   scheduled_at?: string;
   sent_at?: string;
@@ -42,6 +47,8 @@ interface Campaign {
     bounces: number;
     complaints: number;
     unsubscribed: number;
+    whatsapp_sent?: number;
+    whatsapp_failed?: number;
   };
   created_at: string;
 }
@@ -50,6 +57,7 @@ interface TemplateOption {
   id: string;
   name: string;
   subject?: string;
+  html_content?: string;
 }
 
 interface SenderOption {
@@ -78,11 +86,21 @@ export default function CampaignsPage() {
   const [formReplyTo, setFormReplyTo] = useState("");
   const [formTemplateId, setFormTemplateId] = useState("");
   
+  // WhatsApp Fields
+  const [channel, setChannel] = useState<"email" | "whatsapp" | "both">("email");
+  const [whatsappTemplate, setWhatsappTemplate] = useState("");
+  const [whatsappTemplates, setWhatsappTemplates] = useState<any[]>([]);
+
   // Test Send States
   const [showTestModal, setShowTestModal] = useState(false);
   const [testCampaignId, setTestCampaignId] = useState<string | null>(null);
   const [testRecipientEmail, setTestRecipientEmail] = useState("");
   const [sendingTest, setSendingTest] = useState(false);
+
+  // WhatsApp Test Send States
+  const [testWhatsappCampaign, setTestWhatsappCampaign] = useState<Campaign | null>(null);
+  const [testPhone, setTestPhone] = useState("");
+  const [sendingWhatsappTest, setSendingWhatsappTest] = useState(false);
   
   const [audienceAll, setAudienceAll] = useState(true);
   const [audienceListsText, setAudienceListsText] = useState("");
@@ -164,6 +182,13 @@ export default function CampaignsPage() {
         setLists(subData.lists || []);
         setTags(subData.tags || []);
       }
+
+      // 4. Fetch WhatsApp templates
+      const wRes = await fetch("/api/campaigns/meta/whatsapp-templates");
+      if (wRes.ok) {
+        const wData = await wRes.json();
+        setWhatsappTemplates(wData.templates || []);
+      }
     } catch {
       showNotification("Failed to load campaign helpers", "error");
     }
@@ -241,6 +266,32 @@ export default function CampaignsPage() {
     }
   };
 
+  const handleSendWhatsappTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testWhatsappCampaign || !testPhone.trim()) return;
+
+    setSendingWhatsappTest(true);
+    try {
+      const res = await fetch(`/api/campaigns/${testWhatsappCampaign.id}/test-send-whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: testPhone.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showNotification(`Test WhatsApp message sent to ${testPhone.trim()}!`);
+        setTestWhatsappCampaign(null);
+        setTestPhone("");
+      } else {
+        showNotification(data.error || "Failed to send test WhatsApp message", "error");
+      }
+    } catch {
+      showNotification("Network error occurred", "error");
+    } finally {
+      setSendingWhatsappTest(false);
+    }
+  };
+
   const handleRerunSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rerunCampaignId) return;
@@ -273,8 +324,19 @@ export default function CampaignsPage() {
 
   // Submit wizard campaign creation
   const handleWizardSubmit = async () => {
-    if (!formName || !formSubject || !formSenderEmail || !formTemplateId) {
-      setFormError("Missing required parameters in configuration");
+    const needsEmail = channel !== "whatsapp";
+    const needsWhatsapp = channel !== "email";
+
+    if (!formName) {
+      setFormError("Campaign Name is required");
+      return;
+    }
+    if (needsEmail && (!formSubject || !formSenderEmail || !formTemplateId)) {
+      setFormError("Missing required parameters in email configuration");
+      return;
+    }
+    if (needsWhatsapp && !whatsappTemplate) {
+      setFormError("Please select a WhatsApp template");
       return;
     }
 
@@ -283,11 +345,13 @@ export default function CampaignsPage() {
 
     const payload = {
       name: formName,
-      subject: formSubject,
-      sender_name: formSenderName,
-      sender_email: formSenderEmail,
-      reply_to: formReplyTo || undefined,
-      template_id: formTemplateId,
+      subject: needsEmail ? formSubject : undefined,
+      sender_name: needsEmail ? formSenderName : undefined,
+      sender_email: needsEmail ? formSenderEmail : undefined,
+      reply_to: (needsEmail && formReplyTo) ? formReplyTo : undefined,
+      template_id: needsEmail ? formTemplateId : undefined,
+      channel,
+      whatsapp_template: needsWhatsapp ? whatsappTemplate : undefined,
       audience: {
         all: audienceAll,
         lists: audienceAll ? [] : audienceListsText.split(",").map(l => l.trim()).filter(Boolean),
@@ -328,6 +392,8 @@ export default function CampaignsPage() {
     setFormSenderEmail("contact@notifications.pratipal.in");
     setFormReplyTo("");
     setFormTemplateId("");
+    setChannel("email");
+    setWhatsappTemplate("");
     setAudienceAll(true);
     setAudienceListsText("");
     setAudienceTagsText("");
@@ -434,19 +500,45 @@ export default function CampaignsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                 {filteredCampaigns.map((camp) => {
-                  const tplName = typeof camp.template_id === "object" ? camp.template_id.name : "Custom Template";
+                  const isEmailChannel = camp.channel !== "whatsapp";
+                  const isWhatsappChannel = camp.channel !== "email";
+                  
+                  const tplName = camp.channel === "whatsapp"
+                    ? `WA: ${camp.whatsapp_template}`
+                    : (typeof camp.template_id === "object" ? camp.template_id.name : "Custom Template");
+                  
                   const openPct = camp.stats.sent ? ((camp.stats.opens / camp.stats.sent) * 100).toFixed(1) : "0";
                   const clickPct = camp.stats.sent ? ((camp.stats.clicks / camp.stats.sent) * 100).toFixed(1) : "0";
                   
                   return (
                     <tr key={camp.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-4 px-6">
-                        <div className="font-bold text-slate-800">{camp.name}</div>
-                        <div className="text-slate-400 text-xs mt-0.5">Subject: {camp.subject}</div>
-                        <div className="flex gap-2 mt-1.5 text-[10px] text-slate-500 items-center">
-                          <span>Template: <span className="font-semibold">{tplName}</span></span>
-                          <span className="h-1 w-1 bg-slate-300 rounded-full" />
-                          <span>Sender: <span className="font-mono">{camp.sender_email}</span></span>
+                      <td className="py-4 px-6 text-slate-800">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-800">{camp.name}</span>
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
+                            camp.channel === "whatsapp" ? "bg-emerald-100 text-emerald-800" :
+                            camp.channel === "both" ? "bg-indigo-100 text-indigo-800" :
+                            "bg-sky-100 text-sky-800"
+                          }`}>
+                            {camp.channel || "email"}
+                          </span>
+                        </div>
+                        {isEmailChannel ? (
+                          <div className="text-slate-400 text-xs mt-0.5">Subject: {camp.subject}</div>
+                        ) : (
+                          <div className="text-slate-400 text-xs mt-0.5">Template: {camp.whatsapp_template}</div>
+                        )}
+                        <div className="flex gap-2 mt-1.5 text-[10px] text-slate-505 items-center">
+                          {isEmailChannel && (
+                            <>
+                              <span>Template: <span className="font-semibold">{tplName}</span></span>
+                              <span className="h-1 w-1 bg-slate-300 rounded-full" />
+                              <span>Sender: <span className="font-mono">{camp.sender_email}</span></span>
+                            </>
+                          )}
+                          {!isEmailChannel && (
+                            <span>Sender: <span className="font-semibold">WhatsApp Gateway</span></span>
+                          )}
                         </div>
                       </td>
                       <td className="py-4 px-4 text-center">
@@ -466,15 +558,36 @@ export default function CampaignsPage() {
                         )}
                       </td>
                       <td className="py-4 px-4 text-right font-mono font-bold text-slate-800">
-                        {camp.stats.sent.toLocaleString()}
+                        {camp.channel === "both" ? (
+                          <div className="text-xs">
+                            <div>E: {camp.stats.sent.toLocaleString()}</div>
+                            <div className="text-[10px] text-slate-450 font-normal">W: {(camp.stats.whatsapp_sent || 0).toLocaleString()}</div>
+                          </div>
+                        ) : camp.channel === "whatsapp" ? (
+                          <span>{(camp.stats.whatsapp_sent || 0).toLocaleString()} WA</span>
+                        ) : (
+                          <span>{camp.stats.sent.toLocaleString()}</span>
+                        )}
                       </td>
-                      <td className="py-4 px-4 text-right font-mono">
-                        <div className="font-bold text-slate-800">{camp.stats.opens.toLocaleString()}</div>
-                        <div className="text-slate-400 text-xs">{openPct}%</div>
+                      <td className="py-4 px-4 text-right font-mono text-slate-800">
+                        {isEmailChannel ? (
+                          <>
+                            <div className="font-bold">{camp.stats.opens.toLocaleString()}</div>
+                            <div className="text-slate-400 text-xs">{openPct}%</div>
+                          </>
+                        ) : (
+                          <span className="text-slate-350">-</span>
+                        )}
                       </td>
-                      <td className="py-4 px-4 text-right font-mono">
-                        <div className="font-bold text-slate-800">{camp.stats.clicks.toLocaleString()}</div>
-                        <div className="text-slate-400 text-xs">{clickPct}%</div>
+                      <td className="py-4 px-4 text-right font-mono text-slate-800">
+                        {isEmailChannel ? (
+                          <>
+                            <div className="font-bold">{camp.stats.clicks.toLocaleString()}</div>
+                            <div className="text-slate-400 text-xs">{clickPct}%</div>
+                          </>
+                        ) : (
+                          <span className="text-slate-350">-</span>
+                        )}
                       </td>
                       <td className="py-4 px-6 text-right space-x-1.5">
                         <button
@@ -487,17 +600,31 @@ export default function CampaignsPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => {
-                            setTestCampaignId(camp.id);
-                            setShowTestModal(true);
-                            setTestRecipientEmail("");
-                          }}
-                          className="p-1.5 hover:bg-emerald-50 text-slate-500 hover:text-emerald-600 rounded-lg transition-all inline-flex cursor-pointer border border-emerald-100"
-                          title="Send Test Email"
-                        >
-                          <Send className="h-4 w-4" />
-                        </button>
+                        {isEmailChannel && (
+                          <button
+                            onClick={() => {
+                              setTestCampaignId(camp.id);
+                              setShowTestModal(true);
+                              setTestRecipientEmail("");
+                            }}
+                            className="p-1.5 hover:bg-emerald-50 text-slate-500 hover:text-emerald-600 rounded-lg transition-all inline-flex cursor-pointer border border-emerald-100"
+                            title="Send Test Email"
+                          >
+                            <Send className="h-4 w-4" />
+                          </button>
+                        )}
+                        {isWhatsappChannel && (
+                          <button
+                            onClick={() => {
+                              setTestWhatsappCampaign(camp);
+                              setTestPhone("");
+                            }}
+                            className="p-1.5 hover:bg-emerald-55/35 text-slate-500 hover:text-emerald-600 rounded-lg transition-all inline-flex cursor-pointer border border-emerald-105"
+                            title="Send Test WhatsApp"
+                          >
+                            <MessageCircle className="h-4 w-4" />
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setRerunCampaignId(camp.id);
@@ -593,65 +720,119 @@ export default function CampaignsPage() {
                       value={formName}
                       onChange={(e) => setFormName(e.target.value)}
                       placeholder="e.g. July Newsletter, Oil Workshop Remainder"
-                      className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                      style={{ color: "#0f172a" }}
+                      className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500">Email Subject Line *</label>
-                    <input
-                      type="text"
-                      required
-                      value={formSubject}
-                      onChange={(e) => setFormSubject(e.target.value)}
-                      placeholder="e.g. Discover nature's secrets..."
-                      className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                      style={{ color: "#0f172a" }}
-                    />
+                    <label className="text-xs font-semibold text-slate-500">Send via</label>
+                    <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                      {(["email", "whatsapp", "both"] as const).map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setChannel(c)}
+                          className={`flex-1 py-1.5 rounded-md font-semibold text-xs cursor-pointer capitalize ${
+                            channel === c ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  {/* Hidden sender details default to Pratipal and verified AWS SES email */}
+                  {channel !== "whatsapp" && (
+                    <>
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-500">Email Subject Line *</label>
+                        <input
+                          type="text"
+                          required
+                          value={formSubject}
+                          onChange={(e) => setFormSubject(e.target.value)}
+                          placeholder="e.g. Discover nature's secrets..."
+                          className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900"
+                        />
+                      </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500">Reply-To Address (Optional)</label>
-                    <input
-                      type="email"
-                      value={formReplyTo}
-                      onChange={(e) => setFormReplyTo(e.target.value)}
-                      placeholder="e.g. reply@yourdomain.com"
-                      className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                      style={{ color: "#0f172a" }}
-                    />
-                  </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-500">Reply-To Address (Optional)</label>
+                        <input
+                          type="email"
+                          value={formReplyTo}
+                          onChange={(e) => setFormReplyTo(e.target.value)}
+                          placeholder="e.g. reply@yourdomain.com"
+                          className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {channel !== "email" && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-500">WhatsApp Template *</label>
+                      <select
+                        required
+                        value={whatsappTemplate}
+                        onChange={(e) => setWhatsappTemplate(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white"
+                      >
+                        <option value="" disabled>Select an approved template</option>
+                        {whatsappTemplates.map((t) => (
+                          <option key={t.name} value={t.name}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                      {whatsappTemplate && (
+                        <p className="text-[10px] text-slate-405 mt-1">
+                          {whatsappTemplates.find((t) => t.name === whatsappTemplate)?.description}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Only subscribers with a WhatsApp number on file will receive this — others are skipped automatically.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* STEP 2: Select Template */}
               {wizardStep === 2 && (
                 <div className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500">Select Template Design *</label>
-                    <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto pr-1">
-                      {templates.map((tpl) => (
-                        <div
-                          key={tpl.id}
-                          onClick={() => handleTemplateChange(tpl.id)}
-                          className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex justify-between items-center ${
-                            formTemplateId === tpl.id 
-                              ? "border-emerald-600 bg-emerald-50/20" 
-                              : "border-slate-200 hover:border-slate-350"
-                          }`}
-                        >
-                          <div>
-                            <p className="font-bold text-slate-800 text-sm">{tpl.name}</p>
-                            {tpl.subject && <p className="text-[10px] text-slate-400 mt-1 truncate max-w-[300px]">Sub: {tpl.subject}</p>}
-                          </div>
-                          {formTemplateId === tpl.id && <CheckCircle className="h-5 w-5 text-emerald-600" />}
-                        </div>
-                      ))}
+                  {channel === "whatsapp" ? (
+                    <div className="p-6 bg-slate-50 rounded-xl border border-slate-200 text-center space-y-2">
+                      <MessageCircle className="h-10 w-10 text-emerald-600 mx-auto" />
+                      <p className="font-bold text-slate-800 text-sm">WhatsApp Campaign</p>
+                      <p className="text-xs text-slate-500 leading-normal">
+                        No email template design is required since this campaign will only deliver via WhatsApp. Click Next to continue.
+                      </p>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-500">Select Template Design *</label>
+                      <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto pr-1">
+                        {templates.map((tpl) => (
+                          <div
+                            key={tpl.id}
+                            onClick={() => handleTemplateChange(tpl.id)}
+                            className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex justify-between items-center ${
+                              formTemplateId === tpl.id 
+                                ? "border-emerald-600 bg-emerald-50/20" 
+                                : "border-slate-200 hover:border-slate-350"
+                            }`}
+                          >
+                            <div>
+                              <p className="font-bold text-slate-800 text-sm">{tpl.name}</p>
+                              {tpl.subject && <p className="text-[10px] text-slate-400 mt-1 truncate max-w-[300px]">Sub: {tpl.subject}</p>}
+                            </div>
+                            {formTemplateId === tpl.id && <CheckCircle className="h-5 w-5 text-emerald-600" />}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -764,67 +945,126 @@ export default function CampaignsPage() {
                         </div>
                       </div>
                     )}
-                  </div>
-
-                  {/* Test Dispatch Section */}
+                  </div>                  {/* Test Dispatch Section */}
                   <div className="space-y-3 border-t border-slate-100 pt-4">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Test Campaign Delivery</span>
-                    <p className="text-slate-505 text-xs leading-relaxed">
-                      Send a single test run of this campaign's selected template to check its layout and deliverability.
-                    </p>
-                    <div className="flex gap-2">
-                      <input
-                        type="email"
-                        placeholder="you@example.com"
-                        value={testRecipientEmail}
-                        onChange={(e) => setTestRecipientEmail(e.target.value)}
-                        className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                        style={{ color: "#0f172a" }}
-                      />
-                      <button
-                        type="button"
-                        disabled={sendingTest}
-                        onClick={async () => {
-                          if (!testRecipientEmail) {
-                            showNotification("Please enter a test recipient email address", "error");
-                            return;
-                          }
-                          const selectedTemplate = templates.find(t => t.id === formTemplateId);
-                          if (!selectedTemplate) {
-                            showNotification("Please go back and select a template first", "error");
-                            return;
-                          }
-                          setSendingTest(true);
-                          try {
-                            const res = await fetch("/api/test-send", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                to: testRecipientEmail,
-                                subject: `[TEST] ${formSubject}`,
-                                html: selectedTemplate.html_content,
-                                fromName: formSenderName,
-                                fromEmail: formSenderEmail,
-                              }),
-                            });
-                            const data = await res.json();
-                            if (res.ok) {
-                              showNotification("Test email sent successfully!");
-                            } else {
-                              showNotification(data.error || "Failed to send test", "error");
-                            }
-                          } catch {
-                            showNotification("Network error occurred", "error");
-                          } finally {
-                            setSendingTest(false);
-                          }
-                        }}
-                        className="px-4 py-2 bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 font-semibold rounded-xl text-xs transition-colors border border-slate-200 hover:border-emerald-250 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
-                      >
-                        {sendingTest ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                        Send Test
-                      </button>
-                    </div>
+                    
+                    {channel !== "whatsapp" && (
+                      <div className="space-y-2">
+                        <p className="text-slate-505 text-xs leading-relaxed">
+                          Send a single test run of this campaign's selected email template to check its layout and deliverability.
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            placeholder="you@example.com"
+                            value={testRecipientEmail}
+                            onChange={(e) => setTestRecipientEmail(e.target.value)}
+                            className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900"
+                          />
+                          <button
+                            type="button"
+                            disabled={sendingTest}
+                            onClick={async () => {
+                              if (!testRecipientEmail) {
+                                showNotification("Please enter a test recipient email address", "error");
+                                return;
+                              }
+                              const selectedTemplate = templates.find(t => t.id === formTemplateId);
+                              if (!selectedTemplate) {
+                                showNotification("Please go back and select a template first", "error");
+                                return;
+                              }
+                              setSendingTest(true);
+                              try {
+                                const res = await fetch("/api/test-send", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    to: testRecipientEmail,
+                                    subject: `[TEST] ${formSubject}`,
+                                    html: selectedTemplate.html_content,
+                                    fromName: formSenderName,
+                                    fromEmail: formSenderEmail,
+                                  }),
+                                });
+                                const data = await res.json();
+                                if (res.ok) {
+                                  showNotification("Test email sent successfully!");
+                                } else {
+                                  showNotification(data.error || "Failed to send test", "error");
+                                }
+                              } catch {
+                                showNotification("Network error occurred", "error");
+                              } finally {
+                                setSendingTest(false);
+                              }
+                            }}
+                            className="px-4 py-2 bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 font-semibold rounded-xl text-xs transition-colors border border-slate-200 hover:border-emerald-250 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+                          >
+                            {sendingTest ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                            Send Test Email
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {channel !== "email" && (
+                      <div className="space-y-2 pt-2">
+                        <p className="text-slate-550 text-xs leading-relaxed">
+                          Send a test WhatsApp template message using MSG91 configuration.
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            type="tel"
+                            placeholder="+919876543210"
+                            value={testPhone}
+                            onChange={(e) => setTestPhone(e.target.value)}
+                            className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900"
+                          />
+                          <button
+                            type="button"
+                            disabled={sendingWhatsappTest}
+                            onClick={async () => {
+                              if (!testPhone.trim()) {
+                                showNotification("Please enter a test phone number", "error");
+                                return;
+                              }
+                              if (!whatsappTemplate) {
+                                showNotification("Please select a WhatsApp template first", "error");
+                                return;
+                              }
+                              setSendingWhatsappTest(true);
+                              try {
+                                const res = await fetch("/api/test-send/whatsapp", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    to: testPhone.trim(),
+                                    templateName: whatsappTemplate,
+                                    eventName: formName || "Test Campaign",
+                                  }),
+                                });
+                                const data = await res.json();
+                                if (res.ok) {
+                                  showNotification(`Test WhatsApp sent successfully to ${testPhone.trim()}!`);
+                                } else {
+                                  showNotification(data.error || "Failed to send test WhatsApp", "error");
+                                }
+                              } catch {
+                                showNotification("Network error occurred", "error");
+                              } finally {
+                                setSendingWhatsappTest(false);
+                              }
+                            }}
+                            className="px-4 py-2 bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 font-semibold rounded-xl text-xs transition-colors border border-slate-200 hover:border-emerald-250 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+                          >
+                            {sendingWhatsappTest ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+                            Send Test WhatsApp
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -847,12 +1087,24 @@ export default function CampaignsPage() {
                 type="button"
                 onClick={() => {
                   if (wizardStep < 3) {
-                    if (wizardStep === 1 && (!formName || !formSubject || !formSenderEmail)) {
-                      setFormError("Please fill out all required fields.");
-                      return;
+                    const needsEmail = channel !== "whatsapp";
+                    const needsWhatsapp = channel !== "email";
+                    if (wizardStep === 1) {
+                      if (!formName) {
+                        setFormError("Campaign Name is required");
+                        return;
+                      }
+                      if (needsEmail && (!formSubject || !formSenderEmail)) {
+                        setFormError("Please fill out all required email fields.");
+                        return;
+                      }
+                      if (needsWhatsapp && !whatsappTemplate) {
+                        setFormError("Please select a WhatsApp template.");
+                        return;
+                      }
                     }
-                    if (wizardStep === 2 && !formTemplateId) {
-                      setFormError("Please select a template to proceed.");
+                    if (wizardStep === 2 && needsEmail && !formTemplateId) {
+                      setFormError("Please select an email template to proceed.");
                       return;
                     }
                     setFormError("");
@@ -898,26 +1150,35 @@ export default function CampaignsPage() {
 
             {/* Content Details */}
             <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-              
-              {/* Properties Grid */}
+                           {/* Properties Grid */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 grid grid-cols-2 gap-4 text-xs">
                 <div className="space-y-1 col-span-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Email Subject</span>
-                  <p className="font-semibold text-slate-800 leading-normal">{selectedCampaign.subject}</p>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">
+                    {selectedCampaign.channel === "whatsapp" ? "WhatsApp Template" : "Email Subject"}
+                  </span>
+                  <p className="font-semibold text-slate-800 leading-normal">
+                    {selectedCampaign.channel === "whatsapp" ? selectedCampaign.whatsapp_template : selectedCampaign.subject}
+                  </p>
                 </div>
                 
                 <div className="space-y-0.5">
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Sender Identity</span>
-                  <p className="font-semibold text-slate-800">{selectedCampaign.sender_name}</p>
-                  <p className="text-[10px] text-slate-500 font-mono">{selectedCampaign.sender_email}</p>
+                  <p className="font-semibold text-slate-800">
+                    {selectedCampaign.channel === "whatsapp" ? "WhatsApp Gateway" : selectedCampaign.sender_name}
+                  </p>
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    {selectedCampaign.channel === "whatsapp" ? "Active Channel: WhatsApp" : selectedCampaign.sender_email}
+                  </p>
                 </div>
 
                 <div className="space-y-0.5">
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Template</span>
                   <p className="font-semibold text-slate-800">
-                    {typeof selectedCampaign.template_id === "object" 
-                      ? selectedCampaign.template_id.name 
-                      : "HTML Template"}
+                    {selectedCampaign.channel === "whatsapp" 
+                      ? `WhatsApp: ${selectedCampaign.whatsapp_template}` 
+                      : (typeof selectedCampaign.template_id === "object" 
+                        ? selectedCampaign.template_id.name 
+                        : "HTML Template")}
                   </p>
                 </div>
 
@@ -927,7 +1188,7 @@ export default function CampaignsPage() {
                     {selectedCampaign.audience.all ? "All Subscribers" : "Segmented Filter"}
                   </p>
                   {!selectedCampaign.audience.all && (
-                    <div className="text-[10px] text-slate-500 space-y-0.5 mt-1">
+                    <div className="text-[10px] text-slate-505 space-y-0.5 mt-1">
                       {selectedCampaign.audience.lists.length > 0 && (
                         <div>Lists: <span className="bg-slate-200 px-1 py-0.5 rounded font-mono">{selectedCampaign.audience.lists.join(", ")}</span></div>
                       )}
@@ -963,47 +1224,71 @@ export default function CampaignsPage() {
               </div>
 
               {/* Metrics Grid */}
-              <div className="space-y-2">
-                <span className="text-xs font-bold text-slate-450 uppercase tracking-wider block">Campaign Performance Metrics</span>
-                
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="border border-teal-100 p-3 rounded-xl text-center bg-teal-50/30">
-                    <span className="text-[9px] font-bold text-teal-600 uppercase block">Delivered</span>
-                    <span className="font-mono text-base font-bold text-slate-800 mt-1 block">
-                      {Math.max(0, (selectedCampaign.stats.sent || 0) - (selectedCampaign.stats.bounces || 0) - (selectedCampaign.stats.complaints || 0))}
-                    </span>
-                    <span className="text-[9px] text-slate-400 block mt-0.5">
-                      {selectedCampaign.stats.sent
-                        ? (((Math.max(0, (selectedCampaign.stats.sent || 0) - (selectedCampaign.stats.bounces || 0) - (selectedCampaign.stats.complaints || 0))) / selectedCampaign.stats.sent) * 100).toFixed(1)
-                        : "0"}%
-                    </span>
-                  </div>
+              {selectedCampaign.channel !== "whatsapp" && (
+                <div className="space-y-2">
+                  <span className="text-xs font-bold text-slate-450 uppercase tracking-wider block">Email Campaign Performance Metrics</span>
+                  
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="border border-teal-100 p-3 rounded-xl text-center bg-teal-50/30">
+                      <span className="text-[9px] font-bold text-teal-600 uppercase block">Delivered</span>
+                      <span className="font-mono text-base font-bold text-slate-800 mt-1 block">
+                        {Math.max(0, (selectedCampaign.stats.sent || 0) - (selectedCampaign.stats.bounces || 0) - (selectedCampaign.stats.complaints || 0))}
+                      </span>
+                      <span className="text-[9px] text-slate-400 block mt-0.5">
+                        {selectedCampaign.stats.sent
+                          ? (((Math.max(0, (selectedCampaign.stats.sent || 0) - (selectedCampaign.stats.bounces || 0) - (selectedCampaign.stats.complaints || 0))) / selectedCampaign.stats.sent) * 100).toFixed(1)
+                          : "0"}%
+                      </span>
+                    </div>
 
-                  <div className="border border-rose-100 p-3 rounded-xl text-center bg-rose-50/30">
-                    <span className="text-[9px] font-bold text-rose-500 uppercase block">Unsuccessful</span>
-                    <span className="font-mono text-base font-bold text-slate-800 mt-1 block">
-                      {(selectedCampaign.stats.bounces || 0) + (selectedCampaign.stats.complaints || 0)}
-                    </span>
-                    <span className="text-[9px] text-slate-400 block mt-0.5">
-                      {selectedCampaign.stats.sent
-                        ? ((((selectedCampaign.stats.bounces || 0) + (selectedCampaign.stats.complaints || 0)) / selectedCampaign.stats.sent) * 100).toFixed(1)
-                        : "0"}%
-                    </span>
-                  </div>
+                    <div className="border border-rose-100 p-3 rounded-xl text-center bg-rose-50/30">
+                      <span className="text-[9px] font-bold text-rose-500 uppercase block">Unsuccessful</span>
+                      <span className="font-mono text-base font-bold text-slate-800 mt-1 block">
+                        {(selectedCampaign.stats.bounces || 0) + (selectedCampaign.stats.complaints || 0)}
+                      </span>
+                      <span className="text-[9px] text-slate-400 block mt-0.5">
+                        {selectedCampaign.stats.sent
+                          ? ((((selectedCampaign.stats.bounces || 0) + (selectedCampaign.stats.complaints || 0)) / selectedCampaign.stats.sent) * 100).toFixed(1)
+                          : "0"}%
+                      </span>
+                    </div>
 
-                  <div className="border border-slate-150 p-3 rounded-xl text-center bg-slate-50/30">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Unsubscribed</span>
-                    <span className="font-mono text-base font-bold text-slate-800 mt-1 block">
-                      {selectedCampaign.stats.unsubscribed || 0}
-                    </span>
-                    <span className="text-[9px] text-slate-400 block mt-0.5">
-                      {selectedCampaign.stats.sent
-                        ? (((selectedCampaign.stats.unsubscribed || 0) / selectedCampaign.stats.sent) * 100).toFixed(1)
-                        : "0"}%
-                    </span>
+                    <div className="border border-slate-150 p-3 rounded-xl text-center bg-slate-50/30">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase block">Unsubscribed</span>
+                      <span className="font-mono text-base font-bold text-slate-800 mt-1 block">
+                        {selectedCampaign.stats.unsubscribed || 0}
+                      </span>
+                      <span className="text-[9px] text-slate-400 block mt-0.5">
+                        {selectedCampaign.stats.sent
+                          ? (((selectedCampaign.stats.unsubscribed || 0) / selectedCampaign.stats.sent) * 100).toFixed(1)
+                          : "0"}%
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {selectedCampaign.channel !== "email" && (
+                <div className="space-y-2 border-t border-slate-100 pt-4">
+                  <span className="text-xs font-bold text-slate-450 uppercase tracking-wider block">WhatsApp Campaign Delivery Metrics</span>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="border border-teal-100 p-3 rounded-xl text-center bg-teal-50/30">
+                      <span className="text-[9px] font-bold text-teal-600 uppercase block">Dispatched</span>
+                      <span className="font-mono text-base font-bold text-slate-800 mt-1 block">
+                        {(selectedCampaign.stats.whatsapp_sent || 0).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="border border-rose-100 p-3 rounded-xl text-center bg-rose-50/30">
+                      <span className="text-[9px] font-bold text-rose-500 uppercase block">Failed</span>
+                      <span className="font-mono text-base font-bold text-slate-800 mt-1 block">
+                        {(selectedCampaign.stats.whatsapp_failed || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Footer */}
@@ -1196,6 +1481,76 @@ export default function CampaignsPage() {
                     ) : (
                       <>
                         <RotateCcw className="h-3 w-3" /> Run Campaign
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Test WhatsApp Modal */}
+      {testWhatsappCampaign && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center animate-fade-in text-slate-800">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-100 shadow-2xl p-6 relative animate-scale-up">
+            <button 
+              onClick={() => {
+                setTestWhatsappCampaign(null);
+                setTestPhone("");
+              }}
+              className="absolute top-4 right-4 p-1.5 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+            >
+              <X className="h-5 w-5 text-slate-400 hover:text-slate-600" />
+            </button>
+
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="h-5 w-5 text-emerald-600" />
+                <h3 className="text-lg font-bold text-slate-800">Send Test WhatsApp</h3>
+              </div>
+              <p className="text-slate-500 text-xs leading-relaxed">
+                Test the WhatsApp delivery using your MSG91 WhatsApp integration. This will send the approved template <code className="bg-slate-100 px-1 py-0.5 rounded text-emerald-600">"{testWhatsappCampaign.whatsapp_template}"</code>.
+              </p>
+
+              <form onSubmit={handleSendWhatsappTest} className="space-y-4 pt-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500">Recipient Phone (with country code)</label>
+                  <input
+                    type="tel"
+                    required
+                    autoFocus
+                    value={testPhone}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                    placeholder="+919876543210"
+                    className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTestWhatsappCampaign(null);
+                      setTestPhone("");
+                    }}
+                    className="px-4 py-2 border border-slate-200 hover:bg-slate-55 font-semibold rounded-xl text-xs transition-colors cursor-pointer text-slate-600 bg-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={sendingWhatsappTest}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                  >
+                    {sendingWhatsappTest ? (
+                      <>
+                        <Clock className="h-3 w-3 animate-spin" /> Sending...
+                      </>
+                    ) : (
+                      <>
+                        <MessageCircle className="h-3 w-3" /> Send Test
                       </>
                     )}
                   </button>

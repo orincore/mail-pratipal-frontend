@@ -8,7 +8,8 @@ import {
   AlertOctagon, 
   Calendar,
   Layers,
-  ArrowUpRight
+  ArrowUpRight,
+  MessageCircle
 } from "lucide-react";
 import Link from "next/link";
 import FailedDeliveriesCard from "./FailedDeliveriesCard";
@@ -50,6 +51,9 @@ export default async function DashboardPage(props: {
     totalClicks,
     totalBounces,
     totalComplaints,
+    totalWhatsappSent = 0,
+    totalWhatsappFailed = 0,
+    totalWhatsappOpens = 0,
     activeSchedules,
     recentCampaigns,
     dailyStats,
@@ -60,24 +64,31 @@ export default async function DashboardPage(props: {
   const openRate = totalSent ? ((totalOpens / totalSent) * 100) : 0;
   const clickRate = totalSent ? ((totalClicks / totalSent) * 100) : 0;
   const bounceRate = totalSent ? ((totalBounces / totalSent) * 100) : 0;
-  const complaintRate = totalSent ? ((totalComplaints / totalSent) * 100) : 0;
   const deliveryRate = totalSent ? (((totalSent - totalBounces) / totalSent) * 100) : 100;
+  const whatsappDeliveryRate = totalWhatsappSent ? (((totalWhatsappSent - totalWhatsappFailed) / totalWhatsappSent) * 100) : 100;
+  const whatsappOpenRate = totalWhatsappSent ? ((totalWhatsappOpens / totalWhatsappSent) * 100) : 0;
 
   // Calculate SVG Chart Dimensions
   const chartHeight = 200;
   const chartWidth = 500;
-  const maxVal = Math.max(...dailyStats.map(d => Math.max(d.sent, d.opens, 10)));
+  const maxVal = Math.max(...dailyStats.map((d: any) => Math.max(d.sent, d.opens, d.whatsappSent || 0, 10)));
   const padding = 30;
 
-  const pointsSent = dailyStats.map((stat, idx) => {
+  const pointsSent = dailyStats.map((stat: any, idx: number) => {
     const x = padding + (idx * (chartWidth - padding * 2)) / (dailyStats.length - 1);
     const y = chartHeight - padding - (stat.sent * (chartHeight - padding * 2)) / maxVal;
     return `${x},${y}`;
   }).join(" ");
 
-  const pointsOpens = dailyStats.map((stat, idx) => {
+  const pointsOpens = dailyStats.map((stat: any, idx: number) => {
     const x = padding + (idx * (chartWidth - padding * 2)) / (dailyStats.length - 1);
     const y = chartHeight - padding - (stat.opens * (chartHeight - padding * 2)) / maxVal;
+    return `${x},${y}`;
+  }).join(" ");
+
+  const pointsWhatsapp = dailyStats.map((stat: any, idx: number) => {
+    const x = padding + (idx * (chartWidth - padding * 2)) / (dailyStats.length - 1);
+    const y = chartHeight - padding - ((stat.whatsappSent || 0) * (chartHeight - padding * 2)) / maxVal;
     return `${x},${y}`;
   }).join(" ");
 
@@ -85,47 +96,47 @@ export default async function DashboardPage(props: {
     {
       label: "Active Subscribers",
       value: totalSubscribers.toLocaleString(),
-      description: "Active subscribers",
+      description: "Active subscribers on file",
       icon: Users,
       color: "from-emerald-500 to-teal-500",
     },
     {
       label: "Emails Dispatched",
       value: totalSent.toLocaleString(),
-      description: "Total campaigns sent",
+      description: `${deliveryRate.toFixed(1)}% delivery success`,
       icon: Mail,
       color: "from-blue-500 to-indigo-500",
     },
     {
-      label: "Delivered",
-      value: `${deliveryRate.toFixed(1)}%`,
-      description: `${(totalSent - totalBounces).toLocaleString()} delivered`,
-      icon: CheckCircle,
-      color: "from-teal-500 to-cyan-500",
-    },
-    {
-      label: "Open Rate",
-      value: `${openRate.toFixed(1)}%`,
-      description: `${totalOpens.toLocaleString()} open events`,
-      icon: Layers,
+      label: "WhatsApp Sent",
+      value: totalWhatsappSent.toLocaleString(),
+      description: `${whatsappDeliveryRate.toFixed(1)}% delivery success`,
+      icon: MessageCircle,
       color: "from-purple-500 to-violet-500",
     },
     {
-      label: "Click Rate",
-      value: `${clickRate.toFixed(1)}%`,
-      description: `${totalClicks.toLocaleString()} link clicks`,
-      icon: MousePointerClick,
+      label: "Email Open Rate",
+      value: `${openRate.toFixed(1)}%`,
+      description: `${totalOpens.toLocaleString()} open events`,
+      icon: Layers,
+      color: "from-teal-500 to-cyan-500",
+    },
+    {
+      label: "WhatsApp Open Rate",
+      value: `${whatsappOpenRate.toFixed(1)}%`,
+      description: `${totalWhatsappOpens.toLocaleString()} open events`,
+      icon: MessageCircle,
       color: "from-orange-500 to-amber-500",
     },
   ];
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-8 animate-fade-in text-slate-800">
       {/* Title & Top Banner */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Console Analytics</h1>
-          <p className="text-slate-500 text-sm mt-1">Overview of delivery metrics and list growth.</p>
+          <p className="text-slate-505 text-sm mt-1">Overview of delivery metrics and list growth.</p>
         </div>
         <div className="flex flex-wrap gap-3 items-center">
           <TimeframeFilter />
@@ -209,6 +220,16 @@ export default async function DashboardPage(props: {
                 points={pointsOpens}
               />
 
+              {/* WhatsApp Line */}
+              <polyline
+                fill="none"
+                stroke="#a855f7"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                points={pointsWhatsapp}
+              />
+
               {/* Gradients */}
               <defs>
                 <linearGradient id="sentGrad" x1="0" y1="0" x2="0" y2="1">
@@ -218,7 +239,7 @@ export default async function DashboardPage(props: {
               </defs>
 
               {/* X Axis Labels */}
-              {dailyStats.map((stat, idx) => {
+              {dailyStats.map((stat: any, idx: number) => {
                 const x = padding + (idx * (chartWidth - padding * 2)) / (dailyStats.length - 1);
                 
                 const showLabel = 
@@ -247,11 +268,15 @@ export default async function DashboardPage(props: {
           <div className="flex justify-center gap-6 mt-4 border-t border-slate-50 pt-4 text-xs font-semibold">
             <div className="flex items-center gap-2">
               <span className="h-3 w-3 rounded bg-blue-500 block" />
-              <span className="text-slate-600">Emails Sent</span>
+              <span className="text-slate-650">Emails Sent</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="h-3 w-3 rounded bg-emerald-500 block" />
-              <span className="text-slate-600">Emails Opened</span>
+              <span className="text-slate-650">Emails Opened</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-3 w-3 rounded bg-purple-50 block" style={{ backgroundColor: "#a855f7" }} />
+              <span className="text-slate-650">WhatsApp Sent</span>
             </div>
           </div>
         </div>
@@ -263,8 +288,8 @@ export default async function DashboardPage(props: {
               <Calendar className="h-5 w-5 text-emerald-600" />
               <h2 className="text-lg font-bold text-slate-800">Job Scheduler</h2>
             </div>
-            <p className="text-slate-500 text-xs leading-relaxed">
-              We found <span className="font-bold text-emerald-600">{activeSchedules}</span> email campaigns currently scheduled to run. Ensure the background daemon process is running to dispatch these jobs.
+            <p className="text-slate-505 text-xs leading-relaxed">
+              We found <span className="font-bold text-emerald-600">{activeSchedules}</span> campaigns currently scheduled to run. Ensure the background daemon process is running to dispatch these jobs.
             </p>
           </div>
         </div>
@@ -272,14 +297,14 @@ export default async function DashboardPage(props: {
 
       {/* Recent Campaign Lists */}
       <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
-        <h2 className="text-lg font-bold text-slate-800 mb-4">Recent Email Campaigns</h2>
+        <h2 className="text-lg font-bold text-slate-800 mb-4">Recent Campaigns</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-100 text-slate-400 text-xs font-bold uppercase tracking-wider">
                 <th className="pb-3">Campaign Name</th>
                 <th className="pb-3 text-center">Status</th>
-                <th className="pb-3 text-right">Sent</th>
+                <th className="pb-3 text-right">Dispatched</th>
                 <th className="pb-3 text-right">Opens</th>
                 <th className="pb-3 text-right">Clicks</th>
                 <th className="pb-3 text-right">Unsubs</th>
@@ -293,40 +318,82 @@ export default async function DashboardPage(props: {
                   </td>
                 </tr>
               ) : (
-                recentCampaigns.map((camp) => (
-                  <tr key={camp.id || camp._id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="py-3.5 font-semibold text-slate-800">
-                      <div>
-                        <span>{camp.name}</span>
-                        <span className="text-[10px] text-slate-400 block font-normal">{camp.subject}</span>
-                      </div>
-                    </td>
-                    <td className="py-3.5 text-center">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                        camp.status === "sent" ? "bg-emerald-50 text-emerald-600" :
-                        camp.status === "sending" ? "bg-blue-50 text-blue-600" :
-                        camp.status === "scheduled" ? "bg-amber-50 text-amber-600" :
-                        "bg-slate-100 text-slate-500"
-                      }`}>
-                        {camp.status}
-                      </span>
-                    </td>
-                    <td className="py-3.5 text-right font-mono font-medium">{camp.stats.sent.toLocaleString()}</td>
-                    <td className="py-3.5 text-right font-mono font-medium">
-                      {camp.stats.opens.toLocaleString()} 
-                      <span className="text-[10px] text-slate-400 block font-normal">
-                        ({camp.stats.sent ? ((camp.stats.opens / camp.stats.sent) * 100).toFixed(1) : 0}%)
-                      </span>
-                    </td>
-                    <td className="py-3.5 text-right font-mono font-medium">
-                      {camp.stats.clicks.toLocaleString()}
-                      <span className="text-[10px] text-slate-400 block font-normal">
-                        ({camp.stats.sent ? ((camp.stats.clicks / camp.stats.sent) * 100).toFixed(1) : 0}%)
-                      </span>
-                    </td>
-                    <td className="py-3.5 text-right font-mono text-slate-500 font-medium">{camp.stats.unsubscribed}</td>
-                  </tr>
-                ))
+                recentCampaigns.map((camp: any) => {
+                  const isEmailChannel = camp.channel !== "whatsapp";
+                  const openPct = camp.stats.sent ? ((camp.stats.opens / camp.stats.sent) * 100).toFixed(1) : "0";
+                  const clickPct = camp.stats.sent ? ((camp.stats.clicks / camp.stats.sent) * 100).toFixed(1) : "0";
+
+                  return (
+                    <tr key={camp.id || camp._id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3.5 font-semibold text-slate-800">
+                        <div className="flex items-center gap-2">
+                          <span>{camp.name}</span>
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
+                            camp.channel === "whatsapp" ? "bg-emerald-105 text-emerald-800" :
+                            camp.channel === "both" ? "bg-indigo-100 text-indigo-800" :
+                            "bg-sky-100 text-sky-800"
+                          }`}>
+                            {camp.channel || "email"}
+                          </span>
+                        </div>
+                        {isEmailChannel ? (
+                          <span className="text-[10px] text-slate-400 block font-normal">{camp.subject}</span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 block font-normal">Template: {camp.whatsapp_template}</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 text-center">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                          camp.status === "sent" ? "bg-emerald-50 text-emerald-600" :
+                          camp.status === "sending" ? "bg-blue-50 text-blue-600" :
+                          camp.status === "scheduled" ? "bg-amber-50 text-amber-600" :
+                          "bg-slate-100 text-slate-500"
+                        }`}>
+                          {camp.status}
+                        </span>
+                      </td>
+                      <td className="py-3.5 text-right font-mono font-medium">
+                        {camp.channel === "both" ? (
+                          <div className="text-xs">
+                            <div>E: {camp.stats.sent.toLocaleString()}</div>
+                            <div className="text-[10px] text-slate-450 font-normal">W: {(camp.stats.whatsapp_sent || 0).toLocaleString()}</div>
+                          </div>
+                        ) : camp.channel === "whatsapp" ? (
+                          <span>{(camp.stats.whatsapp_sent || 0).toLocaleString()} WA</span>
+                        ) : (
+                          <span>{camp.stats.sent.toLocaleString()}</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 text-right font-mono font-medium">
+                        {isEmailChannel ? (
+                          <>
+                            {camp.stats.opens.toLocaleString()} 
+                            <span className="text-[10px] text-slate-400 block font-normal">
+                              ({openPct}%)
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-slate-350">-</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 text-right font-mono font-medium">
+                        {isEmailChannel ? (
+                          <>
+                            {camp.stats.clicks.toLocaleString()}
+                            <span className="text-[10px] text-slate-400 block font-normal">
+                              ({clickPct}%)
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-slate-350">-</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 text-right font-mono text-slate-500 font-medium">
+                        {isEmailChannel ? camp.stats.unsubscribed : <span className="text-slate-350">-</span>}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

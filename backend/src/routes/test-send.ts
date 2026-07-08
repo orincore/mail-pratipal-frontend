@@ -1,16 +1,55 @@
 import { Router, Response } from "express";
 import { AuthenticatedRequest, authMiddleware } from "../middleware/auth";
 import { getEmailProvider } from "../providers/provider-factory";
+import { prepareEmailHtml, replaceMergeTags } from "../lib/tracking-parser";
+import { sendWhatsappTemplate } from "../providers/msg91-whatsapp.provider";
+import { buildWhatsappTemplateParams, type WhatsappTemplateName } from "../lib/whatsapp-templates";
 
 const router = Router();
 
 // Apply auth middleware to all routes in this file
 router.use(authMiddleware);
 
+// POST /api/test-send/whatsapp - Dispatch test WhatsApp template
+router.post("/whatsapp", async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { to, templateName, eventName = "Test Campaign" } = req.body;
+
+    if (!to || !templateName) {
+      return res.status(400).json({ error: "Required fields (to, templateName) are missing" });
+    }
+
+    const { bodyParams, buttonUrlSuffix } = buildWhatsappTemplateParams(templateName as WhatsappTemplateName, {
+      firstName: "Test Recipient",
+      webinarTitle: eventName,
+      startsAt: new Date(),
+      timezone: "Asia/Kolkata",
+    });
+
+    console.log(`Test WhatsApp Send: Dispatching test message to ${to}`);
+
+    const result = await sendWhatsappTemplate({
+      to,
+      templateName,
+      bodyParams,
+      buttonUrlSuffix,
+    });
+
+    return res.json({
+      success: true,
+      messageId: result.messageId,
+      dispatched_at: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("Test WhatsApp send API error:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 // POST /api/test-send - Dispatch test email
 router.post("/", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { to, subject, html, fromName = "Pratipal Test", fromEmail = "support@notifications.pratipal.in" } = req.body;
+    const { to, subject, html, fromName = "Pratipal", fromEmail = "contact@notifications.pratipal.in" } = req.body;
 
     if (!to || !subject || !html) {
       return res.status(400).json({ error: "Required fields (to, subject, html) are missing" });
@@ -18,14 +57,37 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
 
     const provider = getEmailProvider();
     
+    // Parse HTML to inject personalization mock values and the unsubscribe link (tracking disabled)
+    const trackingUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
+    const mockSubscriber = {
+      email: to,
+      first_name: "Test",
+      last_name: "Recipient",
+      status: "subscribed",
+      metadata: new Map([
+        ["webinar", "Upcoming Webinar"],
+        ["company", "Pratipal"]
+      ]),
+    } as any;
+
+    const parsedHtml = prepareEmailHtml({
+      html,
+      subscriber: mockSubscriber,
+      campaignId: "test-campaign",
+      trackingUrl,
+      trackingEnabled: { opens: false, clicks: false },
+    });
+
+    const parsedSubject = replaceMergeTags(subject, mockSubscriber);
+
     console.log(`Test Send: Dispatching test email to ${to} via ${process.env.EMAIL_PROVIDER || "auto-detected driver"}`);
     
     const result = await provider.sendEmail({
       to,
       fromName,
       fromEmail,
-      subject,
-      html,
+      subject: parsedSubject,
+      html: parsedHtml,
     });
 
     return res.json({

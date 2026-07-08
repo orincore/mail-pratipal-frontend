@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   try {
     await connectDB();
     const body = await req.json();
-    const { 
+        const { 
       name, 
       subject, 
       sender_name, 
@@ -40,11 +40,22 @@ export async function POST(req: NextRequest) {
       template_id, 
       audience, 
       schedule_type,
-      scheduled_at
+      scheduled_at,
+      channel,
+      whatsapp_template
     } = body;
 
-    if (!name || !subject || !sender_name || !sender_email || !template_id) {
-      return NextResponse.json({ error: "Required fields are missing" }, { status: 400 });
+    const resolvedChannel = channel || "email";
+    if (!name) {
+      return NextResponse.json({ error: "Campaign name is required" }, { status: 400 });
+    }
+
+    if (resolvedChannel !== "whatsapp" && (!subject || !sender_name || !sender_email || !template_id)) {
+      return NextResponse.json({ error: "Email configuration fields are required for email channel" }, { status: 400 });
+    }
+
+    if (resolvedChannel !== "email" && !whatsapp_template) {
+      return NextResponse.json({ error: "WhatsApp template is required for WhatsApp channel" }, { status: 400 });
     }
 
     const scheduledDate = schedule_type === "scheduled" && scheduled_at 
@@ -53,16 +64,30 @@ export async function POST(req: NextRequest) {
 
     const campaign = await EmailCampaign.create({
       name,
-      subject,
-      sender_name,
-      sender_email,
-      reply_to,
-      template_id,
+      subject: resolvedChannel !== "whatsapp" ? subject : undefined,
+      sender_name: resolvedChannel !== "whatsapp" ? sender_name : undefined,
+      sender_email: resolvedChannel !== "whatsapp" ? sender_email : undefined,
+      reply_to: resolvedChannel !== "whatsapp" ? reply_to : undefined,
+      template_id: resolvedChannel !== "whatsapp" ? template_id : undefined,
+      channel: resolvedChannel,
+      whatsapp_template: resolvedChannel !== "email" ? whatsapp_template : undefined,
       audience,
       schedule_type,
       scheduled_at: scheduledDate,
       status: schedule_type === "immediate" ? "sending" : "scheduled", // Immediately put into worker processing loop
-      stats: { sent: 0, delivered: 0, opens: 0, clicks: 0, bounces: 0, complaints: 0, unsubscribed: 0 }
+      dispatch_status: resolvedChannel === "whatsapp" ? "skipped" : "pending",
+      whatsapp_dispatch_status: resolvedChannel === "email" ? "skipped" : "pending",
+      stats: {
+        sent: 0,
+        delivered: 0,
+        opens: 0,
+        clicks: 0,
+        bounces: 0,
+        complaints: 0,
+        unsubscribed: 0,
+        whatsapp_sent: 0,
+        whatsapp_failed: 0,
+      }
     });
 
     return NextResponse.json({ success: true, campaign });
