@@ -20,9 +20,10 @@ import Papa from "papaparse";
 
 interface Subscriber {
   id: string;
-  email: string;
+  email?: string;
   first_name?: string;
   last_name?: string;
+  whatsapp_number?: string;
   status: string;
   lists: string[];
   tags: string[];
@@ -49,6 +50,7 @@ export default function SubscribersPage() {
 
   // Form states
   const [formEmail, setFormEmail] = useState("");
+  const [formWhatsappNumber, setFormWhatsappNumber] = useState("");
   const [formFirstName, setFormFirstName] = useState("");
   const [formLastName, setFormLastName] = useState("");
   const [formStatus, setFormStatus] = useState("subscribed");
@@ -107,13 +109,14 @@ export default function SubscribersPage() {
     e.preventDefault();
     setFormError("");
 
-    if (!formEmail) {
-      setFormError("Email is required");
+    if (!formEmail && !formWhatsappNumber) {
+      setFormError("Either Email or WhatsApp number is required");
       return;
     }
 
     const payload = {
-      email: formEmail,
+      email: formEmail || undefined,
+      whatsapp_number: formWhatsappNumber || undefined,
       first_name: formFirstName,
       last_name: formLastName,
       status: formStatus,
@@ -151,7 +154,8 @@ export default function SubscribersPage() {
   // Open Edit Modal
   const openEditModal = (sub: Subscriber) => {
     setEditingSubscriber(sub);
-    setFormEmail(sub.email);
+    setFormEmail(sub.email || "");
+    setFormWhatsappNumber(sub.whatsapp_number || "");
     setFormFirstName(sub.first_name || "");
     setFormLastName(sub.last_name || "");
     setFormStatus(sub.status);
@@ -230,6 +234,7 @@ export default function SubscribersPage() {
 
   const resetForm = () => {
     setFormEmail("");
+    setFormWhatsappNumber("");
     setFormFirstName("");
     setFormLastName("");
     setFormStatus("subscribed");
@@ -444,7 +449,13 @@ export default function SubscribersPage() {
                       <div className="font-semibold text-slate-800">
                         {sub.first_name ? `${sub.first_name} ${sub.last_name || ""}` : "—"}
                       </div>
-                      <div className="text-slate-400 text-xs mt-0.5">{sub.email}</div>
+                      {sub.email && <div className="text-slate-400 text-xs mt-0.5">{sub.email}</div>}
+                      {sub.whatsapp_number && (
+                        <div className="text-slate-400 text-[11px] font-mono mt-0.5 flex items-center gap-1">
+                          <span className="bg-emerald-50 text-emerald-700 px-1 py-0.25 rounded text-[9px] font-bold uppercase tracking-wide">WA</span>
+                          <span>{sub.whatsapp_number}</span>
+                        </div>
+                      )}
                     </td>
                     <td className="py-4 px-4">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
@@ -520,18 +531,30 @@ export default function SubscribersPage() {
                 </div>
               )}
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-500">Email Address *</label>
-                <input
-                  type="email"
-                  required
-                  value={formEmail}
-                  onChange={(e) => setFormEmail(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
-                  style={{ color: "#0f172a" }}
-                  placeholder="name@domain.com"
-                  disabled={!!editingSubscriber}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500">Email Address</label>
+                  <input
+                    type="email"
+                    value={formEmail}
+                    onChange={(e) => setFormEmail(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+                    style={{ color: "#0f172a" }}
+                    placeholder="name@domain.com"
+                    disabled={!!editingSubscriber}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500">WhatsApp Number</label>
+                  <input
+                    type="text"
+                    value={formWhatsappNumber}
+                    onChange={(e) => setFormWhatsappNumber(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white"
+                    style={{ color: "#0f172a" }}
+                    placeholder="919876543210"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

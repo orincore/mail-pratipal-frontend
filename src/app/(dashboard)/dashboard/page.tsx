@@ -133,6 +133,11 @@ export default async function DashboardPage(props: {
 
   // Connect to DB and fetch recent reminders
   await connectDB();
+  
+  // Reference Webinar model to prevent Turbopack/Next.js from tree-shaking the import,
+  // which registers the "Webinar" schema in Mongoose for population.
+  void Webinar;
+
   const recentReminders = await WebinarReminder.find()
     .sort({ computed_send_at: -1 })
     .limit(5)
