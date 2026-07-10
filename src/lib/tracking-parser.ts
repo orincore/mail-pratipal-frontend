@@ -1,4 +1,4 @@
-import { IEmailSubscriber } from "../models/EmailSubscriber";
+import type { IEmailSubscriber } from "../models/EmailSubscriber";
 
 interface ParseParams {
   html: string;

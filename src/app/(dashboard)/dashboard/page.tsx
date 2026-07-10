@@ -10,9 +10,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import TimeframeFilter from "./TimeframeFilter";
-import connectDB from "@/lib/mongodb";
-import WebinarReminder from "@/models/WebinarReminder";
-import Webinar from "@/models/Webinar";
 
 interface DashboardStat {
   label: string;
@@ -37,7 +34,8 @@ export default async function DashboardPage(props: {
     headers: {
       Cookie: `pratipal_session=${sessionCookie}`,
     },
-    next: { revalidate: 0 }
+    next: { revalidate: 0 },
+    cache: "no-store"
   });
 
   if (!statsRes.ok) {
@@ -56,6 +54,7 @@ export default async function DashboardPage(props: {
     totalWhatsappOpens = 0,
     activeSchedules,
     recentCampaigns,
+    recentReminders = [],
     dailyStats,
   } = await statsRes.json();
 
@@ -131,18 +130,7 @@ export default async function DashboardPage(props: {
 
   const colWidth = chartAreaX / dailyStats.length;
 
-  // Connect to DB and fetch recent reminders
-  await connectDB();
-  
-  // Reference Webinar model to prevent Turbopack/Next.js from tree-shaking the import,
-  // which registers the "Webinar" schema in Mongoose for population.
-  void Webinar;
-
-  const recentReminders = await WebinarReminder.find()
-    .sort({ computed_send_at: -1 })
-    .limit(5)
-    .populate("webinar_id", "title")
-    .lean();
+  // Note: recentReminders is now fetched directly from the backend dashboard-stats API
   return (
     <div className="space-y-4 animate-fade-in text-slate-800">
 
