@@ -95,8 +95,8 @@ export default function HeaderControls() {
       <div ref={searchRef} className="relative z-40 w-full sm:w-auto">
 
         {/* Search Input Pill */}
-        <div className="relative flex items-center gap-2 bg-white rounded-full border border-slate-200/60 shadow-sm px-3.5 py-2 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-400/60 transition-all w-64">
-          <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+        <div className="relative flex items-center gap-2.5 bg-white rounded-full border border-slate-200 shadow-sm px-4 py-2.5 focus-within:ring-2 focus-within:ring-emerald-500/15 focus-within:border-emerald-400 transition-all w-full sm:w-72">
+          <Search className="h-4 w-4 text-slate-400 shrink-0" />
           <input
             type="text"
             value={query}
@@ -105,22 +105,22 @@ export default function HeaderControls() {
               setSearchOpen(true);
             }}
             onFocus={() => setSearchOpen(true)}
-            placeholder="Search anything..."
-            className="bg-transparent text-slate-800 text-[11px] font-semibold focus:outline-none flex-1 placeholder-slate-400 border-none p-0 min-w-0"
+            placeholder="Search campaigns, contacts…"
+            className="bg-transparent text-slate-800 text-[13px] font-medium focus:outline-none flex-1 placeholder-slate-400 border-none p-0 min-w-0"
           />
           {query.length > 0 && (
             <button
               onClick={clearSearch}
               className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
             >
-              <X className="h-3 w-3" />
+              <X className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
 
         {/* Search Results Dropdown */}
         {searchOpen && (query.trim().length >= 2 || searchResults) && (
-          <div className="absolute right-0 mt-2 w-[420px] bg-white border border-slate-200/50 shadow-2xl rounded-[28px] p-5 max-h-[80vh] overflow-y-auto z-50 animate-scale-up">
+          <div className="absolute right-0 mt-2 w-[420px] bg-white border border-slate-200 shadow-2xl rounded-2xl p-5 max-h-[80vh] overflow-y-auto z-50 animate-scale-up">
             {searchLoading && (
               <div className="py-8 flex items-center justify-center text-xs text-slate-400 font-bold gap-2">
                 <Clock className="h-4 w-4 animate-spin text-slate-400" />
@@ -154,7 +154,7 @@ export default function HeaderControls() {
                           <button
                             key={i}
                             onClick={() => handleResultClick(p.href)}
-                            className="w-full text-left px-3 py-2.5 hover:bg-slate-55 hover:text-emerald-700 rounded-xl flex items-center justify-between group transition-all duration-200 cursor-pointer"
+                            className="w-full text-left px-3 py-2.5 hover:bg-slate-50 hover:text-emerald-700 rounded-xl flex items-center justify-between group transition-all duration-200 cursor-pointer"
                           >
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-lg bg-slate-50 text-slate-500 flex items-center justify-center shrink-0 group-hover:bg-emerald-50 group-hover:text-emerald-600 transition-colors">
@@ -198,7 +198,7 @@ export default function HeaderControls() {
                               <span className="text-[10px] text-slate-400 font-medium block truncate mt-0.5">{c.subtitle}</span>
                             </div>
                           </div>
-                          <ArrowRight className="h-3.5 w-3.5 text-slate-350 opacity-0 group-hover:opacity-100 transition-all shrink-0" />
+                          <ArrowRight className="h-3.5 w-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-all shrink-0" />
                         </button>
                       ))}
                     </div>
@@ -228,7 +228,7 @@ export default function HeaderControls() {
                               <span className="text-[10px] text-slate-400 font-medium block truncate mt-0.5">{r.subtitle}</span>
                             </div>
                           </div>
-                          <ArrowRight className="h-3.5 w-3.5 text-slate-350 opacity-0 group-hover:opacity-100 transition-all shrink-0" />
+                          <ArrowRight className="h-3.5 w-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-all shrink-0" />
                         </button>
                       ))}
                     </div>
@@ -258,7 +258,7 @@ export default function HeaderControls() {
                               <span className="text-[10px] text-slate-400 font-medium block truncate mt-0.5">{t.subtitle}</span>
                             </div>
                           </div>
-                          <ArrowRight className="h-3.5 w-3.5 text-slate-350 opacity-0 group-hover:opacity-100 transition-all shrink-0" />
+                          <ArrowRight className="h-3.5 w-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-all shrink-0" />
                         </button>
                       ))}
                     </div>
@@ -288,7 +288,7 @@ export default function HeaderControls() {
                               <span className="text-[10px] text-slate-400 font-medium block truncate mt-0.5">{s.subtitle}</span>
                             </div>
                           </div>
-                          <ArrowRight className="h-3.5 w-3.5 text-slate-350 opacity-0 group-hover:opacity-100 transition-all shrink-0" />
+                          <ArrowRight className="h-3.5 w-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-all shrink-0" />
                         </button>
                       ))}
                     </div>

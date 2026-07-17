@@ -19,17 +19,23 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. SSO Token Transfer Check (cross-port redirect token handler)
+  // 2. SSO Token Transfer Check (cross-subdomain redirect token handler —
+  // the main site at pratipal.in redirects here with ?token=<jwt> after
+  // login; we store it as our own first-party cookie for this host.)
   const tokenParam = request.nextUrl.searchParams.get("token");
-  
+
   if (tokenParam) {
     const url = new URL(request.url);
     url.searchParams.delete("token");
     const response = NextResponse.redirect(url);
+    // Secure cookies require HTTPS — only disable for local http:// dev.
+    const isSecureContext = request.nextUrl.protocol === "https:";
     response.cookies.set(COOKIE_NAME, tokenParam, {
       maxAge: 30 * 24 * 60 * 60, // 30 days
       httpOnly: true,
       path: "/",
+      secure: isSecureContext,
+      sameSite: "lax",
     });
     return response;
   }

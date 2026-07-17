@@ -36,3 +36,18 @@ body {
   animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* Soft two-layer elevation used by dashboard surface cards — a single
+   shadow-sm reads flat; two stacked shadows give real depth without
+   looking heavy. */
+.shadow-surface {
+  box-shadow:
+    0 1px 2px 0 rgba(15, 23, 42, 0.04),
+    0 1px 8px -2px rgba(15, 23, 42, 0.06);
+}
+
+.shadow-surface-hover:hover {
+  box-shadow:
+    0 2px 4px 0 rgba(15, 23, 42, 0.05),
+    0 8px 20px -4px rgba(15, 23, 42, 0.09);
+}
+

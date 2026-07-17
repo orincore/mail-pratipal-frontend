@@ -1,22 +1,27 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { 
-  Plus, 
-  Search, 
-  Upload, 
-  Download, 
-  Trash2, 
-  Edit3, 
-  Filter, 
-  Tag, 
+import {
+  Plus,
+  Search,
+  Upload,
+  Download,
+  Trash2,
+  Edit3,
+  Filter,
+  Tag,
   FolderPlus,
   AlertCircle,
   CheckCircle,
   X,
-  RefreshCw
+  RefreshCw,
+  Eye,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import Papa from "papaparse";
+import Link from "next/link";
+import { useRole } from "../RoleProvider";
 
 interface Subscriber {
   id: string;
@@ -31,6 +36,7 @@ interface Subscriber {
 }
 
 export default function SubscribersPage() {
+  const { canWrite } = useRole();
   // Lists and stats states
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [lists, setLists] = useState<string[]>([]);
@@ -42,6 +48,12 @@ export default function SubscribersPage() {
   const [selectedList, setSelectedList] = useState("");
   const [selectedTag, setSelectedTag] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
+
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalSubscribers, setTotalSubscribers] = useState(0);
+  const limit = 25;
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -80,7 +92,7 @@ export default function SubscribersPage() {
   const fetchSubscribers = async () => {
     setLoading(true);
     try {
-      const query = new URLSearchParams();
+      const query = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search) query.append("search", search);
       if (selectedList) query.append("list", selectedList);
       if (selectedTag) query.append("tag", selectedTag);
@@ -92,6 +104,8 @@ export default function SubscribersPage() {
         setSubscribers(data.subscribers || []);
         setLists(data.lists || []);
         setTags(data.tags || []);
+        setTotalPages(data.pages || 1);
+        setTotalSubscribers(data.total || 0);
       }
     } catch {
       showNotification("Failed to fetch subscribers", "error");
@@ -102,6 +116,13 @@ export default function SubscribersPage() {
 
   useEffect(() => {
     fetchSubscribers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, search, selectedList, selectedTag, selectedStatus]);
+
+  // Reset to page 1 whenever a filter changes
+  useEffect(() => {
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, selectedList, selectedTag, selectedStatus]);
 
   // Handle Add/Edit submit
@@ -243,31 +264,57 @@ export default function SubscribersPage() {
     setFormError("");
   };
 
-  // Export current list to CSV
-  const handleExportCsv = () => {
-    if (subscribers.length === 0) {
-      showNotification("No subscribers to export", "error");
-      return;
+  // Export the full filtered list (not just the current page) to CSV
+  const [exporting, setExporting] = useState(false);
+  const handleExportCsv = async () => {
+    setExporting(true);
+    try {
+      const all: Subscriber[] = [];
+      let exportPage = 1;
+      const exportLimit = 200;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const query = new URLSearchParams({ page: String(exportPage), limit: String(exportLimit) });
+        if (search) query.append("search", search);
+        if (selectedList) query.append("list", selectedList);
+        if (selectedTag) query.append("tag", selectedTag);
+        if (selectedStatus) query.append("status", selectedStatus);
+        const res = await fetch(`/api/subscribers?${query.toString()}`);
+        if (!res.ok) break;
+        const data = await res.json();
+        all.push(...(data.subscribers || []));
+        if (exportPage >= (data.pages || 1)) break;
+        exportPage++;
+      }
+
+      if (all.length === 0) {
+        showNotification("No subscribers to export", "error");
+        return;
+      }
+
+      const csvRows = all.map((sub) => ({
+        Email: sub.email,
+        "First Name": sub.first_name || "",
+        "Last Name": sub.last_name || "",
+        Status: sub.status,
+        Lists: sub.lists.join(";"),
+        Tags: sub.tags.join(";"),
+        "Created At": new Date(sub.created_at).toLocaleDateString(),
+      }));
+
+      const csvString = Papa.unparse(csvRows);
+      const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute("download", `subscribers_export_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch {
+      showNotification("Failed to export subscribers", "error");
+    } finally {
+      setExporting(false);
     }
-
-    const csvRows = subscribers.map((sub) => ({
-      Email: sub.email,
-      "First Name": sub.first_name || "",
-      "Last Name": sub.last_name || "",
-      Status: sub.status,
-      Lists: sub.lists.join(";"),
-      Tags: sub.tags.join(";"),
-      "Created At": new Date(sub.created_at).toLocaleDateString(),
-    }));
-
-    const csvString = Papa.unparse(csvRows);
-    const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", `subscribers_export_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   // Sync Storefront Customers
@@ -312,39 +359,46 @@ export default function SubscribersPage() {
           <p className="text-slate-500 text-sm mt-1">Manage, tag, segment and import contacts.</p>
         </div>
         <div className="flex flex-wrap gap-2.5">
-          <button
-            onClick={() => {
-              setEditingSubscriber(null);
-              resetForm();
-              setShowAddModal(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition-all cursor-pointer shadow-sm shadow-emerald-600/10"
-          >
-            <Plus className="h-4.5 w-4.5" /> Add Subscriber
-          </button>
-          <button
-            onClick={() => {
-              setCsvData([]);
-              setImportProgress("idle");
-              setShowImportModal(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition-all cursor-pointer"
-          >
-            <Upload className="h-4.5 w-4.5" /> Import CSV
-          </button>
+          {canWrite && (
+            <button
+              onClick={() => {
+                setEditingSubscriber(null);
+                resetForm();
+                setShowAddModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition-all cursor-pointer shadow-sm shadow-emerald-600/10"
+            >
+              <Plus className="h-4.5 w-4.5" /> Add Subscriber
+            </button>
+          )}
+          {canWrite && (
+            <button
+              onClick={() => {
+                setCsvData([]);
+                setImportProgress("idle");
+                setShowImportModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition-all cursor-pointer"
+            >
+              <Upload className="h-4.5 w-4.5" /> Import CSV
+            </button>
+          )}
           <button
             onClick={handleExportCsv}
-            className="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-sm transition-all cursor-pointer bg-white"
+            disabled={exporting}
+            className="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-sm transition-all cursor-pointer bg-white disabled:opacity-50"
           >
-            <Download className="h-4.5 w-4.5" /> Export List
+            <Download className="h-4.5 w-4.5" /> {exporting ? "Exporting..." : "Export List"}
           </button>
-          <button
-            onClick={handleSyncCustomers}
-            disabled={syncing || loading}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-xl text-sm transition-all cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4.5 w-4.5 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing..." : "Sync Customers"}
-          </button>
+          {canWrite && (
+            <button
+              onClick={handleSyncCustomers}
+              disabled={syncing || loading}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-xl text-sm transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4.5 w-4.5 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing..." : "Sync Customers"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -488,20 +542,31 @@ export default function SubscribersPage() {
                       {new Date(sub.created_at).toLocaleDateString("en-IN", { dateStyle: "medium" })}
                     </td>
                     <td className="py-4 px-6 text-right space-x-1.5">
-                      <button
-                        onClick={() => openEditModal(sub)}
+                      <Link
+                        href={`/subscribers/${sub.id}`}
                         className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-700 rounded-lg transition-all inline-flex cursor-pointer"
-                        title="Edit subscriber"
+                        title="View subscriber activity"
                       >
-                        <Edit3 className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(sub.id)}
-                        className="p-1.5 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-lg transition-all inline-flex cursor-pointer"
-                        title="Delete subscriber"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                        <Eye className="h-4 w-4" />
+                      </Link>
+                      {canWrite && (
+                        <button
+                          onClick={() => openEditModal(sub)}
+                          className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-700 rounded-lg transition-all inline-flex cursor-pointer"
+                          title="Edit subscriber"
+                        >
+                          <Edit3 className="h-4 w-4" />
+                        </button>
+                      )}
+                      {canWrite && (
+                        <button
+                          onClick={() => handleDelete(sub.id)}
+                          className="p-1.5 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-lg transition-all inline-flex cursor-pointer"
+                          title="Delete subscriber"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -509,6 +574,30 @@ export default function SubscribersPage() {
             </tbody>
           </table>
         </div>
+
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+            <span className="text-[10px] text-slate-400 font-semibold">
+              Page {page} of {totalPages} &middot; {totalSubscribers.toLocaleString()} total subscribers
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="p-2 border border-slate-200 hover:bg-white bg-white rounded-lg text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="p-2 border border-slate-200 hover:bg-white bg-white rounded-lg text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Manually Add / Edit Modal Overlay */}

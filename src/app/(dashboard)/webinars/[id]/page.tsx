@@ -3,6 +3,8 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRole } from "../../RoleProvider";
+import { BRAND_NAME, BRAND_SUPPORT_EMAIL } from "@/lib/branding";
 import {
   ArrowLeft,
   Users,
@@ -76,8 +78,8 @@ interface WhatsappTemplateOption {
 }
 
 // The one verified SES sender — hardcoded so the form doesn't expose it.
-const VERIFIED_SENDER_NAME = "Pratipal";
-const VERIFIED_SENDER_EMAIL = "contact@notifications.pratipal.in";
+const VERIFIED_SENDER_NAME = BRAND_NAME;
+const VERIFIED_SENDER_EMAIL = BRAND_SUPPORT_EMAIL;
 
 const PRESETS: { key: string; label: string }[] = [
   { key: "3_days_before", label: "3 days before" },
@@ -144,6 +146,7 @@ function zonedDatetimeLocalToISO(datetimeLocal: string, timeZone: string): strin
 }
 
 export default function WebinarDetailPage() {
+  const { canWrite } = useRole();
   const params = useParams();
   const router = useRouter();
   const webinarId = params.id as string;
@@ -453,24 +456,26 @@ export default function WebinarDetailPage() {
             <Users className="h-3.5 w-3.5" /> {webinar.registrant_count} registered
           </p>
         </div>
-        <button
-          onClick={toggleWebinarCancelled}
-          className={`inline-flex items-center gap-1.5 px-4 py-2 font-semibold rounded-xl text-sm transition-all cursor-pointer ${
-            webinar.status === "cancelled"
-              ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-              : "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
-          }`}
-        >
-          {webinar.status === "cancelled" ? (
-            <>
-              <RotateCcw className="h-4 w-4" /> Reactivate
-            </>
-          ) : (
-            <>
-              <Ban className="h-4 w-4" /> Cancel Webinar
-            </>
-          )}
-        </button>
+        {canWrite && (
+          <button
+            onClick={toggleWebinarCancelled}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 font-semibold rounded-xl text-sm transition-all cursor-pointer ${
+              webinar.status === "cancelled"
+                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                : "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
+            }`}
+          >
+            {webinar.status === "cancelled" ? (
+              <>
+                <RotateCcw className="h-4 w-4" /> Reactivate
+              </>
+            ) : (
+              <>
+                <Ban className="h-4 w-4" /> Cancel Webinar
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
@@ -480,23 +485,25 @@ export default function WebinarDetailPage() {
           </h2>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {PRESETS.map((p) => (
+        {canWrite && (
+          <div className="flex flex-wrap gap-2">
+            {PRESETS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => openModal(p.key)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 rounded-lg text-xs font-semibold text-slate-700 transition-all cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" /> {p.label}
+              </button>
+            ))}
             <button
-              key={p.key}
-              onClick={() => openModal(p.key)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 rounded-lg text-xs font-semibold text-slate-700 transition-all cursor-pointer"
+              onClick={() => openModal(null)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-all cursor-pointer"
             >
-              <Plus className="h-3.5 w-3.5" /> {p.label}
+              <Plus className="h-3.5 w-3.5" /> Custom Reminder
             </button>
-          ))}
-          <button
-            onClick={() => openModal(null)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-all cursor-pointer"
-          >
-            <Plus className="h-3.5 w-3.5" /> Custom Reminder
-          </button>
-        </div>
+          </div>
+        )}
 
         {reminders.length === 0 ? (
           <p className="text-sm text-slate-400 py-6 text-center">No reminders configured yet.</p>
@@ -529,7 +536,7 @@ export default function WebinarDetailPage() {
                         {dispatchBadge(r.whatsapp_dispatch_status)}
                       </span>
                     )}
-                    {showEmail && (
+                    {canWrite && showEmail && (
                       <button
                         onClick={() => {
                           setTestReminder(r);
@@ -541,7 +548,7 @@ export default function WebinarDetailPage() {
                         <Send className="h-3.5 w-3.5" /> Test
                       </button>
                     )}
-                    {showWhatsapp && (
+                    {canWrite && showWhatsapp && (
                       <button
                         onClick={() => {
                           setTestWhatsappReminder(r);
@@ -553,21 +560,25 @@ export default function WebinarDetailPage() {
                         <MessageCircle className="h-3.5 w-3.5" /> Test
                       </button>
                     )}
-                    <button
-                      onClick={() => toggleReminderStatus(r)}
-                      disabled={busy}
-                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                      title={r.status === "active" ? "Pause" : "Resume"}
-                    >
-                      {r.status === "active" ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                    </button>
-                    <button
-                      onClick={() => deleteReminder(r)}
-                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {canWrite && (
+                      <button
+                        onClick={() => toggleReminderStatus(r)}
+                        disabled={busy}
+                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                        title={r.status === "active" ? "Pause" : "Resume"}
+                      >
+                        {r.status === "active" ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
+                    {canWrite && (
+                      <button
+                        onClick={() => deleteReminder(r)}
+                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );

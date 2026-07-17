@@ -3,6 +3,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Mail, CheckCircle2, AlertTriangle, ArrowLeft } from "lucide-react";
+import { BRAND_NAME, BRAND_WEBSITE_URL } from "@/lib/branding";
 
 function UnsubscribeContent() {
   const searchParams = useSearchParams();
@@ -56,7 +57,7 @@ function UnsubscribeContent() {
             <Mail className="h-8 w-8" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Email Preferences</h1>
-          <p className="text-emerald-100 text-sm mt-1">Pratipal Healing & Wellness</p>
+          <p className="text-emerald-100 text-sm mt-1">{BRAND_NAME}</p>
         </div>
 
         <div className="p-8">
@@ -125,10 +126,10 @@ function UnsubscribeContent() {
               </div>
               <div className="pt-4 border-t border-slate-100 flex flex-col gap-2">
                 <a
-                  href="https://pratipal.in"
+                  href={BRAND_WEBSITE_URL}
                   className="w-full inline-flex justify-center items-center px-4 py-2.5 bg-slate-100 text-slate-700 font-semibold rounded-xl text-sm hover:bg-slate-200 transition-all"
                 >
-                  <ArrowLeft className="h-4 w-4 mr-2" /> Back to Pratipal
+                  <ArrowLeft className="h-4 w-4 mr-2" /> Back to {BRAND_NAME}
                 </a>
               </div>
             </div>

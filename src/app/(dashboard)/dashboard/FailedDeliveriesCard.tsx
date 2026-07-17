@@ -1,18 +1,18 @@
 "use client";
 
 import React, { useState } from "react";
-import { AlertOctagon, X, Clock, AlertTriangle } from "lucide-react";
+import { AlertOctagon, X, Loader2, CheckCircle2, ArrowUpRight } from "lucide-react";
 
 interface FailedDeliveriesCardProps {
   totalBounces: number;
   totalComplaints: number;
-  sessionCookie?: string;
+  totalFailed?: number;
 }
 
 export default function FailedDeliveriesCard({
   totalBounces,
   totalComplaints,
-  sessionCookie
+  totalFailed: totalFailedSends = 0,
 }: FailedDeliveriesCardProps) {
   const [showModal, setShowModal] = useState(false);
   const [events, setEvents] = useState<any[]>([]);
@@ -36,113 +36,108 @@ export default function FailedDeliveriesCard({
     }
   };
 
-  const totalFailed = totalBounces + totalComplaints;
+  const totalFailed = totalBounces + totalComplaints + totalFailedSends;
+  const isHealthy = totalFailed === 0;
 
   return (
     <>
-      {/* Clickable Card wrapper */}
       <button
         onClick={handleOpen}
-        className="w-full text-left bg-white rounded-[28px] border border-[#e8ece6] p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-all min-h-[160px] cursor-pointer group focus:outline-none focus:ring-2 focus:ring-emerald-500/20 shrink-0"
+        className="w-full text-left bg-white rounded-3xl border border-slate-200 shadow-surface shadow-surface-hover p-5 flex flex-col justify-between transition-shadow min-h-[168px] cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30"
       >
-        <div className="flex items-center justify-between w-full">
-          <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
-            <AlertOctagon className="h-5.5 w-5.5" />
+        <div className="flex items-start justify-between w-full">
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${isHealthy ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"}`}>
+            {isHealthy ? <CheckCircle2 className="h-5 w-5" /> : <AlertOctagon className="h-5 w-5" />}
           </div>
-          <div className="text-slate-400 hover:text-slate-650 p-1">
-            <span className="text-[10px] font-bold bg-slate-50 hover:bg-slate-100 px-2 py-1 rounded-full transition-all border border-slate-100">LOGS</span>
-          </div>
+          <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-slate-400 group-hover:text-slate-600 transition-colors">
+            View log <ArrowUpRight className="h-3 w-3" />
+          </span>
         </div>
 
         <div className="mt-4">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Failed Deliveries</span>
+          <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wide block">Failed deliveries</span>
           <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-3xl font-black text-slate-900 tracking-tight">{totalFailed}</span>
+            <span className="text-[28px] font-semibold text-slate-900 tracking-tight tabular-nums leading-none">{totalFailed.toLocaleString()}</span>
           </div>
-          <div className="flex items-center gap-1.5 mt-2">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-              totalFailed > 0 ? "bg-rose-50 text-rose-700 border-rose-100" : "bg-emerald-50 text-emerald-700 border-emerald-100"
+          <div className="flex items-center gap-1.5 mt-2.5">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-medium ${
+              isHealthy ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
             }`}>
-              {totalFailed > 0 ? "Needs Review" : "0% Failures"}
+              {isHealthy ? "All clear" : "Needs review"}
             </span>
-            <span className="text-[10px] text-slate-400 font-semibold">Click to view bounce details</span>
           </div>
         </div>
       </button>
 
-      {/* Undelivered Mails Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-md flex items-center justify-center animate-fade-in text-slate-800 p-4">
-          <div className="bg-white rounded-[28px] max-w-2xl w-full border border-slate-200/50 shadow-2xl flex flex-col max-h-[85vh] relative animate-scale-up overflow-hidden">
-            {/* Modal Header */}
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center animate-fade-in text-slate-800 p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl flex flex-col max-h-[85vh] relative animate-scale-up overflow-hidden">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center">
-                  <AlertOctagon className="h-6 w-6" />
+                <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center shrink-0">
+                  <AlertOctagon className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900 tracking-tight">Undelivered Mails</h3>
-                  <p className="text-slate-400 text-xs mt-0.5 font-medium">Logs of permanent bounces, complaints, and delivery rejections.</p>
+                  <h3 className="text-[15px] font-semibold text-slate-900">Undelivered mail</h3>
+                  <p className="text-slate-500 text-[12.5px] mt-0.5">Bounces, complaints, and send failures.</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setShowModal(false)}
-                className="p-2 hover:bg-slate-50 rounded-full transition-colors cursor-pointer text-slate-400 hover:text-slate-650"
+                className="p-2 hover:bg-slate-50 rounded-full transition-colors cursor-pointer text-slate-400 hover:text-slate-600"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4.5 w-4.5" />
               </button>
             </div>
 
-            {/* Modal Content */}
-            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+            <div className="p-6 overflow-y-auto flex-1 space-y-3">
               {loading ? (
-                <div className="py-12 flex flex-col items-center justify-center gap-3">
-                  <Clock className="h-8 w-8 text-slate-400 animate-spin" />
-                  <span className="text-slate-500 text-sm font-semibold">Loading failure logs...</span>
+                <div className="py-14 flex flex-col items-center justify-center gap-3">
+                  <Loader2 className="h-6 w-6 text-slate-400 animate-spin" />
+                  <span className="text-slate-500 text-[13px] font-medium">Loading failure logs…</span>
                 </div>
               ) : events.length === 0 ? (
-                <div className="py-12 flex flex-col items-center justify-center gap-2 text-center">
-                  <AlertTriangle className="h-10 w-10 text-slate-300" />
-                  <span className="text-slate-650 font-bold text-sm">No undelivered emails found</span>
-                  <span className="text-slate-450 text-xs max-w-sm">All sent dispatches are running cleanly with no recorded bounces or complaints!</span>
+                <div className="py-14 flex flex-col items-center justify-center gap-2 text-center">
+                  <CheckCircle2 className="h-9 w-9 text-emerald-500" />
+                  <span className="text-slate-800 font-semibold text-[14px]">No undelivered mail found</span>
+                  <span className="text-slate-400 text-[12.5px] max-w-sm">Every recent dispatch went through cleanly.</span>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100 border border-slate-200/50 rounded-2xl overflow-hidden bg-slate-50/50">
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
                   {events.map((ev, idx) => {
-                    const campName = ev.campaign_id?.name || "System Dispatch / Automation";
+                    const campName = ev.campaign_id?.name || ev.reminder_id?.name || "Test / manual send";
                     const isComplaint = ev.event_type === "complaint";
-                    
-                    // Decode failure reason
+                    const isFailed = ev.event_type === "failed";
+
                     let reason = "Delivery attempt rejected by server.";
                     if (isComplaint) {
-                      reason = "Recipient reported email as SPAM/Junk.";
+                      reason = "Recipient reported this email as spam.";
                     } else if (ev.details?.error) {
                       reason = ev.details.error;
                     } else if (ev.details?.bounceType) {
-                      reason = `${ev.details.bounceType} Bounce (${ev.details.bounceSubType || "General"})`;
+                      reason = `${ev.details.bounceType} bounce (${ev.details.bounceSubType || "general"})`;
+                    } else if (isFailed) {
+                      reason = "Send attempt failed — infra/provider error, not a recipient bounce.";
                     }
 
                     return (
-                      <div key={ev.id || idx} className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-800">{ev.recipient_email}</span>
-                            <span className={`px-2 py-0.5 rounded-full font-bold uppercase text-[9px] ${
-                              isComplaint ? "bg-amber-50 text-amber-600 border border-amber-100" : "bg-rose-50 text-rose-600 border border-rose-100"
+                      <div key={ev.id || idx} className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-[12.5px] hover:bg-slate-50/60 transition-colors">
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-slate-800 truncate">{ev.recipient_email}</span>
+                            <span className={`px-1.5 py-0.5 rounded-md font-medium uppercase text-[9.5px] ${
+                              isComplaint ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"
                             }`}>
                               {ev.event_type}
                             </span>
                           </div>
                           <div className="text-slate-500">
-                            Campaign: <span className="font-semibold text-slate-700">{campName}</span>
-                          </div>
-                          <div className="text-slate-400 text-[10px]">
-                            Logged on: {new Date(ev.timestamp).toLocaleString("en-IN")}
+                            {campName} <span className="text-slate-300">·</span>{" "}
+                            {new Date(ev.timestamp).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
                           </div>
                         </div>
-                        <div className="sm:text-right max-w-xs w-full sm:w-auto">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Reason</span>
-                          <span className="text-slate-600 font-medium leading-relaxed block bg-white px-3 py-1.5 rounded-xl border border-slate-200/50 shadow-sm text-left">{reason}</span>
+                        <div className="sm:text-right max-w-xs w-full sm:w-auto shrink-0">
+                          <span className="text-slate-600 leading-relaxed block bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-left">{reason}</span>
                         </div>
                       </div>
                     );
@@ -151,13 +146,12 @@ export default function FailedDeliveriesCard({
               )}
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end">
+            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end">
               <button
                 onClick={() => setShowModal(false)}
-                className="px-6 py-2.5 border border-slate-200 hover:bg-slate-100 font-bold rounded-full text-xs transition-all cursor-pointer text-slate-700 bg-white"
+                className="px-5 py-2 border border-slate-200 hover:bg-white font-medium rounded-full text-[13px] transition-all cursor-pointer text-slate-700 bg-white"
               >
-                Close Logs
+                Close
               </button>
             </div>
           </div>

@@ -1,12 +1,12 @@
 import React from "react";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import {
-  Mail
-} from "lucide-react";
 import SidebarNav from "./SidebarNav";
 import HeaderControls from "./HeaderControls";
+import { BRAND_NAME, BRAND_LOGO_URL } from "@/lib/branding";
+import { RoleProvider, type UserRole } from "./RoleProvider";
+
+const VALID_ROLES: UserRole[] = ["admin", "editor", "viewer"];
 
 export default async function DashboardLayout({
   children,
@@ -36,64 +36,79 @@ export default async function DashboardLayout({
     }
   }
 
-  // Double-verify admin roles at the page level
-  if (!userPayload || userPayload.role !== "admin") {
+  // Double-verify the session is valid at the page level — any recognized
+  // role (admin/editor/viewer) may enter; the backend enforces per-request
+  // write restrictions for non-admin roles, this is just the entry gate.
+  if (!userPayload || !VALID_ROLES.includes(userPayload.role)) {
     const mainAppUrl = process.env.NEXT_PUBLIC_MAIN_APP_URL || "http://localhost:3000";
     redirect(`${mainAppUrl}/admin/login?redirect=http://localhost:3001/dashboard`);
   }
 
   const adminName = userPayload.full_name || "Administrator";
-  const adminEmail = userPayload.email;
+  const userRole: UserRole = userPayload.role;
+  const initials = adminName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s: string) => s[0]?.toUpperCase())
+    .join("");
 
   return (
-    <div className="flex h-screen bg-[#f3f5f0] overflow-hidden font-sans pt-1.5 px-4 pb-4 gap-6">
-      {/* Sidebar Navigation */}
-      <aside className="w-20 bg-white flex flex-col justify-start items-center pt-3 pb-6 rounded-[28px] border border-[#e2e8f0]/40 shadow-sm shrink-0">
-        <div className="flex flex-col items-center w-full">
-          {/* Logo Brand Panel */}
-          <div className="h-12 w-12 rounded-full overflow-hidden flex items-center justify-center mb-8 shrink-0 bg-white shadow-sm border border-slate-100/50 p-1">
-            <img src="/logo.png" alt="Pratipal Logo" className="max-h-full max-w-full object-contain" />
+    <RoleProvider role={userRole}>
+      <div className="flex h-screen bg-[#f3f5f0] overflow-hidden font-sans p-4 gap-5">
+        {/* Sidebar Navigation */}
+        <aside className="w-[76px] bg-white flex flex-col items-center pt-4 pb-5 rounded-3xl border border-slate-200/70 shadow-surface shrink-0">
+          <div className="h-11 w-11 rounded-2xl overflow-hidden flex items-center justify-center mb-7 shrink-0 bg-slate-50 border border-slate-100 p-1.5">
+            <img src={BRAND_LOGO_URL} alt={`${BRAND_NAME} Logo`} className="max-h-full max-w-full object-contain" />
           </div>
-
-          {/* Navigation Links */}
           <SidebarNav />
-        </div>
-      </aside>
-
-      {/* Main Panel Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header Panel */}
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-3 pb-2 mb-6 gap-4 shrink-0">
-          <div>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight leading-none">
-              Hello, {adminName.split(" ")[0]}!
-            </h1>
-            <p className="text-slate-400 text-xs mt-1.5 font-medium">
-              Explore information and activity about your campaign console
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <HeaderControls />
-
-            {/* Back Link */}
-            <a
-              href={`${process.env.NEXT_PUBLIC_MAIN_APP_URL || "http://localhost:3000"}/admin`}
-              className="text-xs font-bold text-slate-600 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/50 shadow-sm px-4 py-2.5 rounded-full transition-all shrink-0"
+          <div className="mt-auto pt-4 flex flex-col items-center gap-2">
+            <div
+              title={`${adminName} · ${userRole}`}
+              className="h-9 w-9 rounded-full bg-slate-900 text-white text-[11px] font-semibold flex items-center justify-center select-none"
             >
-              ← Admin Portal
-            </a>
+              {initials || "A"}
+            </div>
           </div>
-        </header>
+        </aside>
 
-        {/* Content Port */}
-        <main className="flex-1 overflow-y-auto pr-1">
-          <div className="space-y-6">
+        {/* Main Panel Content Area */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Top Header Panel */}
+          <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 shrink-0 pb-5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-[22px] font-semibold text-slate-900 tracking-[-0.01em] leading-none">
+                  Welcome back, {adminName.split(" ")[0]}
+                </h1>
+                {userRole !== "admin" && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200">
+                    {userRole}
+                  </span>
+                )}
+              </div>
+              <p className="text-slate-500 text-[13px] mt-1.5">
+                Here's what's happening across your campaigns today.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 w-full lg:w-auto">
+              <HeaderControls />
+              <a
+                href={`${process.env.NEXT_PUBLIC_MAIN_APP_URL || "http://localhost:3000"}/admin`}
+                className="hidden sm:inline-flex items-center text-[12.5px] font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 shadow-sm px-4 py-2.5 rounded-full transition-colors shrink-0"
+              >
+                ← Admin Portal
+              </a>
+            </div>
+          </header>
+
+          {/* Content Port */}
+          <main className="flex-1 overflow-y-auto pr-1 -mr-1">
             {children}
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
-    </div>
+    </RoleProvider>
   );
 }
-

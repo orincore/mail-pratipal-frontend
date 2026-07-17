@@ -11,6 +11,7 @@ import {
   CheckCircle,
   AlertCircle,
 } from "lucide-react";
+import { useRole } from "../RoleProvider";
 
 interface WebinarReminderSummary {
   id: string;
@@ -42,6 +43,7 @@ function formatInZone(iso: string, timeZone: string) {
 }
 
 export default function WebinarsListPage() {
+  const { canWrite } = useRole();
   const [webinars, setWebinars] = useState<WebinarListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -114,14 +116,16 @@ export default function WebinarsListPage() {
             Synced from registration windows on the main website — set up automated email reminders.
           </p>
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-all shadow-sm cursor-pointer"
-        >
-          <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-          {syncing ? "Syncing..." : "Sync Now"}
-        </button>
+        {canWrite && (
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-all shadow-sm cursor-pointer"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Syncing..." : "Sync Now"}
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -137,13 +141,15 @@ export default function WebinarsListPage() {
           <p className="text-sm text-gray-500 mb-6 text-center max-w-sm">
             Sync landing page registration windows to set up automated email reminders.
           </p>
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition-all cursor-pointer"
-          >
-            <RefreshCw className="h-4 w-4" /> Sync Now
-          </button>
+          {canWrite && (
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition-all cursor-pointer"
+            >
+              <RefreshCw className="h-4 w-4" /> Sync Now
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

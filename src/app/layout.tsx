@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { BRAND_NAME, BRAND_TAGLINE } from "@/lib/branding";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pratipal Mailer",
-  description: "Pratipal Campaign Console",
+  title: `${BRAND_NAME} Mailer`,
+  description: `${BRAND_NAME} ${BRAND_TAGLINE}`,
 };
 
 export default function RootLayout({

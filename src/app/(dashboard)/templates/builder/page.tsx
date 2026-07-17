@@ -2,23 +2,29 @@
 
 import React, { useState, useEffect, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { 
-  ArrowLeft, 
-  Save, 
-  Smartphone, 
-  Monitor, 
-  Code, 
-  BookOpen, 
-  Sparkles,
+import {
+  ArrowLeft,
+  Save,
+  Smartphone,
+  Monitor,
+  Code,
+  BookOpen,
   CheckCircle,
   AlertCircle,
   Send,
   X,
   Undo,
-  Redo
+  Redo,
+  FileCode,
+  FileText,
 } from "lucide-react";
+import { useRole } from "../../RoleProvider";
+import { BRAND_NAME, BRAND_WEBSITE_URL, BRAND_SUPPORT_EMAIL } from "@/lib/branding";
+import BlockEditor from "./BlockEditor";
+import { type EmailDesign, renderBlocksToHtml, starterDesign, isValidDesign } from "./blocks";
 
 function BuilderContent() {
+  const { canWrite } = useRole();
   const router = useRouter();
   const searchParams = useSearchParams();
   const templateId = searchParams.get("id");
@@ -28,128 +34,100 @@ function BuilderContent() {
   const [subject, setSubject] = useState("");
   const [htmlContent, setHtmlContent] = useState("");
   const [templateType, setTemplateType] = useState<"html" | "text">("html");
-  const [editorMode, setEditorMode] = useState<"html" | "visual">("visual"); // Default to visual (Clean Editor)
+  const [editorMode, setEditorMode] = useState<"html" | "visual">("visual"); // Default to visual (block builder)
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Synchronized inputs for the "Clean Editor" (visual mode)
-  const [h1Input, setH1Input] = useState("");
-  const [h2Input, setH2Input] = useState("");
-  const [paragraphInput, setParagraphInput] = useState("");
-  const [buttonTextInput, setButtonTextInput] = useState("");
-  const [buttonUrlInput, setButtonUrlInput] = useState("");
-  const [isUpdatingFromInputs, setIsUpdatingFromInputs] = useState(false);
+  // Block builder state
+  const [design, setDesign] = useState<EmailDesign>(() => starterDesign());
 
-  // Undo/Redo history states
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+  // Undo/redo — separate stacks for the block builder and the raw HTML editor
+  const [designHistory, setDesignHistory] = useState<EmailDesign[]>([]);
+  const [designHistoryIndex, setDesignHistoryIndex] = useState(-1);
+  const [htmlHistory, setHtmlHistory] = useState<string[]>([]);
+  const [htmlHistoryIndex, setHtmlHistoryIndex] = useState(-1);
+  const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const pushToHistory = (content: string) => {
-    if (historyIndex >= 0 && history[historyIndex] === content) return;
-    const newHistory = history.slice(0, historyIndex + 1);
-    newHistory.push(content);
-    if (newHistory.length > 50) newHistory.shift();
-    setHistory(newHistory);
-    setHistoryIndex(newHistory.length - 1);
-  };
+  // Recompute htmlContent from blocks whenever the design changes in visual mode,
+  // and debounce a history snapshot so undo/redo tracks meaningful steps rather
+  // than every keystroke.
+  useEffect(() => {
+    if (editorMode !== "visual") return;
+    setHtmlContent(renderBlocksToHtml(design));
+
+    if (historyTimer.current) clearTimeout(historyTimer.current);
+    historyTimer.current = setTimeout(() => {
+      setDesignHistory((prev) => {
+        const trimmed = prev.slice(0, designHistoryIndex + 1);
+        trimmed.push(design);
+        if (trimmed.length > 50) trimmed.shift();
+        setDesignHistoryIndex(trimmed.length - 1);
+        return trimmed;
+      });
+    }, 400);
+    return () => {
+      if (historyTimer.current) clearTimeout(historyTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [design, editorMode]);
 
   const handleUndo = () => {
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      setIsUpdatingFromInputs(true);
-      setHtmlContent(history[newIndex]);
+    if (editorMode === "visual") {
+      if (designHistoryIndex > 0) {
+        const idx = designHistoryIndex - 1;
+        setDesignHistoryIndex(idx);
+        setDesign(designHistory[idx]);
+      }
+    } else if (htmlHistoryIndex > 0) {
+      const idx = htmlHistoryIndex - 1;
+      setHtmlHistoryIndex(idx);
+      setHtmlContent(htmlHistory[idx]);
     }
   };
 
   const handleRedo = () => {
-    if (historyIndex < history.length - 1) {
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      setIsUpdatingFromInputs(true);
-      setHtmlContent(history[newIndex]);
+    if (editorMode === "visual") {
+      if (designHistoryIndex < designHistory.length - 1) {
+        const idx = designHistoryIndex + 1;
+        setDesignHistoryIndex(idx);
+        setDesign(designHistory[idx]);
+      }
+    } else if (htmlHistoryIndex < htmlHistory.length - 1) {
+      const idx = htmlHistoryIndex + 1;
+      setHtmlHistoryIndex(idx);
+      setHtmlContent(htmlHistory[idx]);
     }
   };
 
-  // Parse HTML into input states
-  useEffect(() => {
-    if (isUpdatingFromInputs) {
-      setIsUpdatingFromInputs(false);
+  const pushHtmlHistory = (content: string) => {
+    setHtmlHistory((prev) => {
+      if (htmlHistoryIndex >= 0 && prev[htmlHistoryIndex] === content) return prev;
+      const trimmed = prev.slice(0, htmlHistoryIndex + 1);
+      trimmed.push(content);
+      if (trimmed.length > 50) trimmed.shift();
+      setHtmlHistoryIndex(trimmed.length - 1);
+      return trimmed;
+    });
+  };
+
+  const canUndo = editorMode === "visual" ? designHistoryIndex > 0 : htmlHistoryIndex > 0;
+  const canRedo = editorMode === "visual" ? designHistoryIndex < designHistory.length - 1 : htmlHistoryIndex < htmlHistory.length - 1;
+
+  // Switch between the block builder and raw HTML editing, guarding against
+  // silently discarding hand-edited HTML that no longer matches the blocks.
+  const switchToVisual = () => {
+    const inSync = htmlContent === renderBlocksToHtml(design);
+    if (!inSync && !confirm("Switching to the block builder will replace your hand-edited HTML with the block layout. Continue?")) {
       return;
     }
-    
-    // Extract h1 (Hero title)
-    const h1Regex = /<h1\b[^>]*>([\s\S]*?)<\/h1>/i;
-    const h1Match = htmlContent.match(h1Regex);
-    setH1Input(h1Match ? h1Match[1].trim() : "");
+    setEditorMode("visual");
+  };
 
-    // Extract h2 (Greeting heading)
-    const h2Regex = /<h2\b[^>]*>([\s\S]*?)<\/h2>/i;
-    const h2Match = htmlContent.match(h2Regex);
-    setH2Input(h2Match ? h2Match[1].trim() : "");
-
-    // Extract paragraph
-    const pRegex = /<p\b[^>]*>([\s\S]*?)<\/p>/i;
-    const pMatch = htmlContent.match(pRegex);
-    setParagraphInput(pMatch ? pMatch[1].trim() : "");
-
-    // Extract button link and text
-    const btnRegex = /<a\b[^>]*href=(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/i;
-    const btnMatch = htmlContent.match(btnRegex);
-    if (btnMatch) {
-      setButtonUrlInput(btnMatch[2].trim());
-      setButtonTextInput(btnMatch[3].replace(/<[^>]*>/g, "").trim());
-    } else {
-      setButtonUrlInput("");
-      setButtonTextInput("");
-    }
-  }, [htmlContent]);
-
-  // Update HTML content from visual input states
-  const updateHtmlFromInputs = (
-    newH1: string,
-    newH2: string,
-    newParagraph: string,
-    newBtnText: string,
-    newBtnUrl: string
-  ) => {
-    setIsUpdatingFromInputs(true);
-    let updated = htmlContent;
-
-    // Replace first <h1> tag content
-    const h1Regex = /(<h1\b[^>]*>)([\s\S]*?)(<\/h1>)/i;
-    if (updated.match(h1Regex)) {
-      updated = updated.replace(h1Regex, `$1${newH1}$3`);
-    }
-
-    // Replace first <h2> tag content
-    const h2Regex = /(<h2\b[^>]*>)([\s\S]*?)(<\/h2>)/i;
-    if (updated.match(h2Regex)) {
-      updated = updated.replace(h2Regex, `$1${newH2}$3`);
-    }
-
-    // Replace first <p> tag content
-    const pRegex = /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i;
-    if (updated.match(pRegex)) {
-      updated = updated.replace(pRegex, `$1${newParagraph}$3`);
-    } else if (newParagraph) {
-      // Fallback if no paragraph tag is present
-      const btnContainerRegex = /(<div\b[^>]*margin-bottom:\s*28px;[^>]*>)/i;
-      if (updated.match(btnContainerRegex)) {
-        updated = updated.replace(btnContainerRegex, `<p style="color: #475569; font-size: 15px; line-height: 1.6; margin-bottom: 24px;">${newParagraph}</p>\n\n$1`);
-      }
-    }
-
-    // Replace first <a> tag href and content
-    const btnRegex = /(<a\b[^>]*href=(["']))(.*?)\2([^>]*>)([\s\S]*?)(<\/a>)/i;
-    if (updated.match(btnRegex)) {
-      updated = updated.replace(btnRegex, `$1${newBtnUrl}$2$4${newBtnText}$6`);
-    }
-
-    setHtmlContent(updated);
-    pushToHistory(updated);
+  const switchToHtml = () => {
+    pushHtmlHistory(htmlContent);
+    setEditorMode("html");
   };
 
   // Send Test states
@@ -171,8 +149,7 @@ function BuilderContent() {
     if (!iframe || !iframe.contentDocument) return;
 
     const doc = iframe.contentDocument;
-    
-    // Initialize container if not already initialized
+
     if (!doc.getElementById("email-preview-container")) {
       doc.open();
       doc.write(`
@@ -199,50 +176,34 @@ function BuilderContent() {
         .replaceAll("{{first_name}}", "Jane")
         .replaceAll("{{name}}", "Jane Doe")
         .replaceAll("{{email}}", "jane.doe@example.com")
-        .replaceAll("{{company}}", "Pratipal Store")
+        .replaceAll("{{company}}", `${BRAND_NAME} Store`)
         .replaceAll("{{webinar}}", "Introduction to Essential Oils masterclass")
+        .replaceAll("{{join_link}}", `${BRAND_WEBSITE_URL}/webinar/join/PREVIEW-ID`)
         .replaceAll("{{date}}", new Date().toLocaleDateString("en-IN", { dateStyle: "long" }))
-        .replaceAll("{{unsubscribe}}", `
-          <div style="margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 15px; text-align: center; font-size: 12px; color: #9ca3af; font-family: sans-serif;">
-            You are receiving this email because you subscribed to Pratipal communications. <br/>
-            <a href="#" style="color: #059669; text-decoration: underline;">Unsubscribe from this list</a>
-          </div>
-        `);
-      
-      // Restore scroll position
+        // Matches real backend behavior: the token is substituted with a
+        // bare URL string, not markup (see tracking-parser.ts). It's meant
+        // to sit inside an href="{{unsubscribe}}" attribute (that's what
+        // the Footer block's "Unsubscribe" link toggle produces) — swapping
+        // in a full <a> tag here would nest markup inside an attribute and
+        // break the HTML wherever the token is used correctly.
+        .replaceAll("{{unsubscribe}}", `${process.env.NEXT_PUBLIC_APP_URL || "https://crm.pratipal.in"}/unsubscribe?email=jane.doe%40example.com&sourceType=campaign&sourceId=PREVIEW`);
+
       iframe.contentWindow?.scrollTo(0, scrollY);
     }
   };
 
   useEffect(() => {
     updateIframeContent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [htmlContent]);
 
   // Load existing template if editing
   useEffect(() => {
     if (!templateId) {
-      const defaultHtml = `
-<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 28px 16px; background-color: #f4f5f2;">
-  <div style="display: flex; align-items: center; gap: 10px; padding: 0 4px 20px;">
-    <img src="https://pratipal.in/assets/footer_logo.png" width="32" height="32" alt="Pratipal" style="display: block; border-radius: 8px;" />
-    <span style="font-size: 16px; font-weight: 700; color: #232d5f; letter-spacing: -0.01em;">Pratipal</span>
-  </div>
-  <div style="background-color: #ffffff; padding: 32px; border-radius: 16px; border: 1px solid #eae7e0; box-shadow: 0 1px 3px rgba(16,24,40,0.04);">
-    <h1 style="color: #1f2430; font-size: 21px; margin-top: 0;">Hello {{first_name}},</h1>
-    <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">Welcome to your email template. You can customize this layout completely using the HTML editor or add block elements.</p>
-
-    <div style="text-align: center; margin: 28px 0;">
-      <a href="https://pratipal.in" style="background-color: #d97745; color: #ffffff; text-decoration: none; padding: 13px 32px; border-radius: 10px; font-weight: 600; font-size: 14px;">Visit Website</a>
-    </div>
-
-    <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">If you have any questions, reply to this email.</p>
-  </div>
-  {{unsubscribe}}
-</div>
-      `.trim();
-      setHtmlContent(defaultHtml);
-      setHistory([defaultHtml]);
-      setHistoryIndex(0);
+      const initial = starterDesign();
+      setDesign(initial);
+      setDesignHistory([initial]);
+      setDesignHistoryIndex(0);
       return;
     }
 
@@ -256,11 +217,22 @@ function BuilderContent() {
           if (found) {
             setName(found.name);
             setSubject(found.subject || "");
-            setHtmlContent(found.html_content);
-            setHistory([found.html_content]);
-            setHistoryIndex(0);
+            setHtmlContent(found.html_content || "");
             setTemplateType(found.type === "text" ? "text" : "html");
-            setEditorMode(found.type === "builder" ? "visual" : "html");
+
+            if (isValidDesign(found.design_json)) {
+              setDesign(found.design_json);
+              setDesignHistory([found.design_json]);
+              setDesignHistoryIndex(0);
+              setEditorMode("visual");
+            } else {
+              // Legacy or hand-coded template with no block structure —
+              // open it in the raw HTML editor rather than silently
+              // rebuilding it from a fresh block layout.
+              setHtmlHistory([found.html_content || ""]);
+              setHtmlHistoryIndex(0);
+              setEditorMode("html");
+            }
           } else {
             setError("Template not found");
           }
@@ -286,9 +258,17 @@ function BuilderContent() {
       const isEdit = !!templateId;
       const url = "/api/templates";
       const method = isEdit ? "PUT" : "POST";
-      const body = isEdit 
-        ? { id: templateId, name, subject, html_content: htmlContent, type: templateType }
-        : { name, subject, html_content: htmlContent, type: templateType };
+
+      // Only persist design_json when the stored HTML still matches what the
+      // current block layout would produce — otherwise a hand-edited HTML
+      // template would silently snap back to stale blocks next time it's opened.
+      const inSyncWithBlocks = templateType === "html" && htmlContent === renderBlocksToHtml(design);
+      const design_json = inSyncWithBlocks ? design : null;
+      const storedType = templateType === "text" ? "text" : inSyncWithBlocks ? "builder" : "html";
+
+      const body = isEdit
+        ? { id: templateId, name, subject, html_content: htmlContent, type: storedType, design_json }
+        : { name, subject, html_content: htmlContent, type: storedType, design_json };
 
       const res = await fetch(url, {
         method,
@@ -329,8 +309,8 @@ function BuilderContent() {
           to: testEmail,
           subject: subject || `Test Preview: ${name || "Template"}`,
           html: htmlContent,
-          fromName: "Pratipal",
-          fromEmail: "support@notifications.pratipal.in", // Use verified domain address
+          fromName: BRAND_NAME,
+          fromEmail: BRAND_SUPPORT_EMAIL,
         }),
       });
 
@@ -349,8 +329,7 @@ function BuilderContent() {
     }
   };
 
-  // Helper to append template tags to html editor
-  const insertToken = (token: string) => {
+  const insertHtmlToken = (token: string) => {
     const textarea = document.getElementById("html-textarea") as HTMLTextAreaElement;
     if (textarea) {
       const start = textarea.selectionStart;
@@ -365,7 +344,7 @@ function BuilderContent() {
         textarea.selectionStart = textarea.selectionEnd = start + token.length;
       }, 0);
     } else {
-      setHtmlContent(prev => prev + token);
+      setHtmlContent((prev) => prev + token);
     }
   };
 
@@ -375,6 +354,7 @@ function BuilderContent() {
     { label: "Email Address", token: "{{email}}" },
     { label: "Company", token: "{{company}}" },
     { label: "Webinar Title", token: "{{webinar}}" },
+    { label: "Webinar Join Link", token: "{{join_link}}" },
     { label: "Current Date", token: "{{date}}" },
     { label: "Unsubscribe Link", token: "{{unsubscribe}}" },
   ];
@@ -389,12 +369,12 @@ function BuilderContent() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Toast Notification */}
       {notification && (
         <div className={`fixed bottom-4 right-4 z-50 p-4 rounded-xl shadow-lg border text-sm flex items-center gap-2 animate-bounce ${
-          notification.type === "success" 
-            ? "bg-emerald-50 text-emerald-800 border-emerald-200" 
+          notification.type === "success"
+            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
             : "bg-rose-50 text-rose-800 border-rose-200"
         }`}>
           {notification.type === "success" ? <CheckCircle className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
@@ -403,214 +383,166 @@ function BuilderContent() {
       )}
 
       {/* Editor Top Bar Actions */}
-      <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center bg-white p-4.5 rounded-2xl border border-slate-100 shadow-sm gap-4">
-        {/* Left: Title & Back Button */}
+      <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center bg-white py-4 px-5 rounded-3xl border border-slate-200 shadow-surface gap-4">
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push("/templates")}
-            className="p-2 border border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-xl transition-all cursor-pointer bg-white"
+            className="p-2 border border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-xl transition-all cursor-pointer bg-white shrink-0"
           >
             <ArrowLeft className="h-4.5 w-4.5" />
           </button>
-          <div className="min-w-[150px] text-left">
-            <h1 className="text-base font-bold text-slate-800 leading-tight">
-              {templateId ? "Edit Template" : "New Template"}
+          <div className="min-w-[130px] text-left">
+            <h1 className="text-[14px] font-semibold text-slate-900 leading-tight">
+              {templateId ? "Edit template" : "New template"}
             </h1>
-            <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Visual Sandbox</span>
+            {!templateId && (
+              <div className="flex items-center gap-1 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setTemplateType("html")}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors cursor-pointer ${
+                    templateType === "html" ? "bg-emerald-50 text-emerald-700" : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <FileCode className="h-3 w-3" /> Email
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTemplateType("text")}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors cursor-pointer ${
+                    templateType === "text" ? "bg-emerald-50 text-emerald-700" : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <FileText className="h-3 w-3" /> Plain text
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Center: Inlined Properties */}
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3 max-w-3xl">
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Template Name *"
-            className="w-full border border-slate-200 rounded-xl px-3.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white text-slate-900 font-medium placeholder:text-slate-400"
+            placeholder="Template name *"
+            className="w-full border border-slate-200 rounded-full px-4 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white text-slate-900 font-medium placeholder:text-slate-400 placeholder:font-normal"
           />
           <input
             type="text"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            placeholder="Default Subject"
-            className="w-full border border-slate-200 rounded-xl px-3.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white text-slate-900 font-medium placeholder:text-slate-400"
+            placeholder="Default subject line"
+            className="w-full border border-slate-200 rounded-full px-4 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white text-slate-900 font-medium placeholder:text-slate-400 placeholder:font-normal"
           />
         </div>
 
-        {/* Right: Actions */}
-        <div className="flex gap-2 items-center justify-end">
-          <button
-            onClick={() => setShowTestModal(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs transition-all cursor-pointer bg-white"
-          >
-            <Send className="h-3.5 w-3.5" /> Send Test
-          </button>
+        <div className="flex gap-2 items-center justify-end shrink-0">
+          {canWrite && (
+            <button
+              onClick={() => setShowTestModal(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-full text-[12.5px] transition-all cursor-pointer bg-white"
+            >
+              <Send className="h-3.5 w-3.5" /> Send test
+            </button>
+          )}
           <button
             onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs transition-all cursor-pointer shadow-sm disabled:opacity-50"
+            disabled={saving || !canWrite}
+            title={!canWrite ? "Viewers cannot save templates" : undefined}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-full text-[12.5px] transition-all cursor-pointer disabled:opacity-50"
           >
-            <Save className="h-3.5 w-3.5" /> {saving ? "Saving..." : "Save Template"}
+            <Save className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save template"}
           </button>
         </div>
       </div>
 
       {/* Split Screen Grid Workspaces */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-[calc(100vh-190px)]">
-        {/* Left Column: Properties and Code Area */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col overflow-hidden">
-          {/* Code Editor Workspace */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 h-[calc(100vh-190px)]">
+        {/* Left Column: Editor */}
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-surface flex flex-col overflow-hidden">
           <div className="flex-1 flex flex-col min-h-0">
-            <div className="flex items-center justify-between px-6 py-3 border-b border-slate-100 bg-slate-50/50">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Code className="h-4 w-4" /> {templateType === "text" ? "Plain Text Editor" : "Template Content Editor"}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50/60 shrink-0">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                <Code className="h-3.5 w-3.5" /> {templateType === "text" ? "Plain text editor" : "Template content"}
               </span>
-              {templateType === "html" && (
-                <div className="flex items-center bg-slate-200/60 p-0.5 rounded-xl border border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => setEditorMode("visual")}
-                    className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                      editorMode === "visual" 
-                        ? "bg-white text-slate-800 shadow-sm" 
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
-                  >
-                    Clean Editor
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditorMode("html")}
-                    className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                      editorMode === "html" 
-                        ? "bg-white text-slate-800 shadow-sm" 
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
-                  >
-                    HTML Code
-                  </button>
-                </div>
-              )}
-              
-              {/* Undo / Redo controls */}
-              {templateType === "html" && editorMode === "visual" && (
-                <div className="flex items-center gap-1 border-l border-slate-200 pl-3">
-                  <button
-                    type="button"
-                    disabled={historyIndex <= 0}
-                    onClick={handleUndo}
-                    className="p-1 hover:bg-slate-200 text-slate-500 disabled:opacity-30 rounded-lg cursor-pointer transition-all"
-                    title="Undo Change"
-                  >
-                    <Undo className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={historyIndex >= history.length - 1}
-                    onClick={handleRedo}
-                    className="p-1 hover:bg-slate-200 text-slate-500 disabled:opacity-30 rounded-lg cursor-pointer transition-all"
-                    title="Redo Change"
-                  >
-                    <Redo className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-3">
+                {templateType === "html" && (
+                  <div className="flex items-center bg-slate-200/60 p-0.5 rounded-xl border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={switchToVisual}
+                      className={`px-3 py-1 rounded-lg text-[10.5px] font-semibold transition-all cursor-pointer ${
+                        editorMode === "visual" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      Block builder
+                    </button>
+                    <button
+                      type="button"
+                      onClick={switchToHtml}
+                      className={`px-3 py-1 rounded-lg text-[10.5px] font-semibold transition-all cursor-pointer ${
+                        editorMode === "html" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      HTML code
+                    </button>
+                  </div>
+                )}
+
+                {templateType === "html" && (
+                  <div className="flex items-center gap-1 border-l border-slate-200 pl-3">
+                    <button
+                      type="button"
+                      disabled={!canUndo}
+                      onClick={handleUndo}
+                      className="p-1 hover:bg-slate-200 text-slate-500 disabled:opacity-30 rounded-lg cursor-pointer transition-all"
+                      title="Undo"
+                    >
+                      <Undo className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canRedo}
+                      onClick={handleRedo}
+                      className="p-1 hover:bg-slate-200 text-slate-500 disabled:opacity-30 rounded-lg cursor-pointer transition-all"
+                      title="Redo"
+                    >
+                      <Redo className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-            
+
             {templateType === "html" && editorMode === "visual" ? (
-              <div className="flex-1 p-6 space-y-6 overflow-y-auto bg-slate-50/30 text-left">
-
-                {/* Hero Title Heading (H1) - Conditionally shown */}
-                {htmlContent.toLowerCase().includes("<h1") && (
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Hero Title Heading (H1)</label>
-                    <input
-                      type="text"
-                      value={h1Input}
-                      onChange={(e) => {
-                        setH1Input(e.target.value);
-                        updateHtmlFromInputs(e.target.value, h2Input, paragraphInput, buttonTextInput, buttonUrlInput);
-                      }}
-                      placeholder="e.g. Exclusive Member Offer"
-                      className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900 font-medium"
-                    />
-                  </div>
-                )}
-
-                {/* Greeting Heading (H2) - Conditionally shown */}
-                {htmlContent.toLowerCase().includes("<h2") && (
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Greeting Heading (H2)</label>
-                    <input
-                      type="text"
-                      value={h2Input}
-                      onChange={(e) => {
-                        setH2Input(e.target.value);
-                        updateHtmlFromInputs(h1Input, e.target.value, paragraphInput, buttonTextInput, buttonUrlInput);
-                      }}
-                      placeholder="e.g. Hi {{first_name}},"
-                      className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900 font-medium"
-                    />
-                  </div>
-                )}
-
-                {/* Subject Paragraph Textbox */}
-                {htmlContent.toLowerCase().includes("<p") && (
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Subject Paragraph</label>
-                    <textarea
-                      value={paragraphInput}
-                      onChange={(e) => {
-                        setParagraphInput(e.target.value);
-                        updateHtmlFromInputs(h1Input, h2Input, e.target.value, buttonTextInput, buttonUrlInput);
-                      }}
-                      rows={4}
-                      placeholder="Write the main message paragraph here..."
-                      className="w-full border border-slate-200 rounded-xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900 leading-relaxed shadow-sm"
-                    />
-                  </div>
-                )}
-
-                {/* Call To Action Button Card Block */}
-                {htmlContent.toLowerCase().includes("<a") && (
-                  <div className="border border-slate-200/80 bg-white rounded-2xl p-5 space-y-4 shadow-sm">
-                    <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                      <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Call to Action Button</span>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Button Text</label>
-                        <input
-                          type="text"
-                          value={buttonTextInput}
-                          onChange={(e) => {
-                            setButtonTextInput(e.target.value);
-                            updateHtmlFromInputs(h1Input, h2Input, paragraphInput, e.target.value, buttonUrlInput);
-                          }}
-                          placeholder="e.g. Join Webinar"
-                          className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900 font-medium"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Button Link (URL)</label>
-                        <input
-                          type="text"
-                          value={buttonUrlInput}
-                          onChange={(e) => {
-                            setButtonUrlInput(e.target.value);
-                            updateHtmlFromInputs(h1Input, h2Input, paragraphInput, buttonTextInput, e.target.value);
-                          }}
-                          placeholder="e.g. https://example.com"
-                          className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900 font-medium"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
+              <BlockEditor design={design} onChange={setDesign} />
+            ) : templateType === "html" ? (
+              <div className="flex-1 flex flex-col min-h-0">
+                <div className="flex items-center gap-1.5 flex-wrap px-5 py-2.5 border-b border-slate-100 bg-slate-50/40 shrink-0">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mr-1">Insert:</span>
+                  {variables.map((v) => (
+                    <button
+                      key={v.token}
+                      type="button"
+                      onClick={() => insertHtmlToken(v.token)}
+                      className="px-2 py-0.5 bg-white border border-slate-200 hover:border-emerald-300 hover:text-emerald-700 text-slate-600 rounded-md text-[10.5px] font-medium transition-colors cursor-pointer"
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  id="html-textarea"
+                  value={htmlContent}
+                  onChange={(e) => {
+                    setHtmlContent(e.target.value);
+                  }}
+                  onBlur={(e) => pushHtmlHistory(e.target.value)}
+                  className="flex-1 w-full p-6 font-mono text-xs focus:outline-none resize-none overflow-y-auto leading-relaxed bg-white border-0"
+                  style={{ color: "#000000", backgroundColor: "#ffffff" }}
+                  placeholder="<!-- Write your email HTML markup here -->"
+                />
               </div>
             ) : (
               <textarea
@@ -619,32 +551,31 @@ function BuilderContent() {
                 onChange={(e) => setHtmlContent(e.target.value)}
                 className="flex-1 w-full p-6 font-mono text-xs focus:outline-none resize-none overflow-y-auto leading-relaxed bg-white border-0"
                 style={{ color: "#000000", backgroundColor: "#ffffff" }}
-                placeholder={templateType === "text" ? "Write your plain text email body here..." : "<!-- Write your email HTML markup here -->"}
+                placeholder="Write your plain text email body here..."
               />
             )}
           </div>
         </div>
 
         {/* Right Column: Live Sandbox Preview */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col overflow-hidden">
-          {/* Device toggle tools */}
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-              <BookOpen className="h-4 w-4" /> Live Render Preview
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-surface flex flex-col overflow-hidden">
+          <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60 shrink-0">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+              <BookOpen className="h-3.5 w-3.5" /> Live preview
             </span>
             {templateType === "html" && (
               <div className="flex bg-slate-200/60 p-0.5 rounded-lg border border-slate-200">
                 <button
                   onClick={() => setPreviewDevice("desktop")}
                   className={`p-1.5 rounded-md transition-all cursor-pointer ${previewDevice === "desktop" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
-                  title="Desktop View"
+                  title="Desktop view"
                 >
                   <Monitor className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setPreviewDevice("mobile")}
                   className={`p-1.5 rounded-md transition-all cursor-pointer ${previewDevice === "mobile" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
-                  title="Mobile View"
+                  title="Mobile view"
                 >
                   <Smartphone className="h-4 w-4" />
                 </button>
@@ -652,7 +583,6 @@ function BuilderContent() {
             )}
           </div>
 
-          {/* Viewport content */}
           <div className="flex-1 bg-slate-100 p-6 flex justify-center items-start overflow-y-auto min-h-0">
             {templateType === "text" ? (
               <div className="bg-white shadow-lg rounded-xl p-8 w-full max-w-xl h-[calc(100vh-360px)] overflow-y-auto border border-slate-200/50 flex flex-col">
@@ -661,15 +591,16 @@ function BuilderContent() {
                     .replaceAll("{{first_name}}", "Jane")
                     .replaceAll("{{name}}", "Jane Doe")
                     .replaceAll("{{email}}", "jane.doe@example.com")
-                    .replaceAll("{{company}}", "Pratipal Store")
+                    .replaceAll("{{company}}", `${BRAND_NAME} Store`)
                     .replaceAll("{{webinar}}", "Introduction to Essential Oils masterclass")
+                    .replaceAll("{{join_link}}", `${BRAND_WEBSITE_URL}/webinar/join/PREVIEW-ID`)
                     .replaceAll("{{date}}", new Date().toLocaleDateString("en-IN", { dateStyle: "long" }))
                     .replaceAll("{{unsubscribe}}", "\n\n[Unsubscribe link will be placed here]")
                   }
                 </div>
               </div>
             ) : (
-              <div 
+              <div
                 className={`bg-white shadow-lg transition-all duration-300 rounded-xl overflow-hidden border border-slate-200/50 flex flex-col h-[calc(100vh-360px)] ${
                   previewDevice === "mobile" ? "w-[360px]" : "w-full max-w-2xl"
                 }`}
@@ -700,7 +631,7 @@ function BuilderContent() {
                 <X className="h-5 w-5 text-slate-500" />
               </button>
             </div>
-            
+
             <form onSubmit={handleSendTest} className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-500">Recipient Email Address *</label>
@@ -744,7 +675,7 @@ function BuilderContent() {
 
 export default function TemplateBuilderPage() {
   return (
-    <Suspense 
+    <Suspense
       fallback={
         <div className="h-[70vh] flex items-center justify-center">
           <div className="h-10 w-10 border-4 border-slate-200 border-t-emerald-600 rounded-full animate-spin" />

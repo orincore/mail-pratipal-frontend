@@ -8,15 +8,24 @@ import {
   Pause, 
   Play, 
   XSquare, 
-  Clock, 
+  Clock,
   CheckCircle,
   AlertCircle,
   Eye,
   Calendar,
   X,
   RotateCcw,
-  MessageCircle
+  MessageCircle,
+  FileEdit,
+  Rocket,
+  ChevronLeft,
+  ChevronRight,
+  BarChart3,
+  FlaskConical
 } from "lucide-react";
+import Link from "next/link";
+import { useRole } from "../RoleProvider";
+import { BRAND_NAME, BRAND_SUPPORT_EMAIL } from "@/lib/branding";
 
 interface Campaign {
   id: string;
@@ -32,6 +41,13 @@ interface Campaign {
     lists: string[];
     tags: string[];
     all: boolean;
+    segment_id?: { id: string; name: string } | string;
+  };
+  ab_test?: {
+    enabled: boolean;
+    split_percentage: number;
+    subject_b?: string;
+    template_id_b?: string;
   };
   status: "draft" | "scheduled" | "sending" | "sent" | "paused" | "cancelled";
   dispatch_status: "pending" | "sending" | "sent" | "skipped";
@@ -60,36 +76,51 @@ interface TemplateOption {
   html_content?: string;
 }
 
-interface SenderOption {
+interface SegmentOption {
   id: string;
-  email: string;
-  verification_status: string;
+  name: string;
+  subscriber_count?: number;
 }
 
 export default function CampaignsPage() {
+  const { canWrite } = useRole();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
-  const [senders, setSenders] = useState<SenderOption[]>([]);
+  const [segments, setSegments] = useState<SegmentOption[]>([]);
   const [lists, setLists] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCampaigns, setTotalCampaigns] = useState(0);
+  const limit = 20;
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Wizard Modal
   const [showWizard, setShowWizard] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
 
   // Form Fields
   const [formName, setFormName] = useState("");
   const [formSubject, setFormSubject] = useState("");
-  const [formSenderName, setFormSenderName] = useState("Pratipal");
-  const [formSenderEmail, setFormSenderEmail] = useState("contact@notifications.pratipal.in");
+  const [formSenderName, setFormSenderName] = useState(BRAND_NAME);
+  const [formSenderEmail, setFormSenderEmail] = useState(BRAND_SUPPORT_EMAIL);
   const [formReplyTo, setFormReplyTo] = useState("");
   const [formTemplateId, setFormTemplateId] = useState("");
-  
+
   // WhatsApp Fields
   const [channel, setChannel] = useState<"email" | "whatsapp" | "both">("email");
   const [whatsappTemplate, setWhatsappTemplate] = useState("");
   const [whatsappTemplates, setWhatsappTemplates] = useState<any[]>([]);
+
+  // A/B Test Fields
+  const [abEnabled, setAbEnabled] = useState(false);
+  const [abSplitPercentage, setAbSplitPercentage] = useState(50);
+  const [abSubjectB, setAbSubjectB] = useState("");
+  const [abTemplateIdB, setAbTemplateIdB] = useState("");
 
   // Test Send States
   const [showTestModal, setShowTestModal] = useState(false);
@@ -102,9 +133,10 @@ export default function CampaignsPage() {
   const [testPhone, setTestPhone] = useState("");
   const [sendingWhatsappTest, setSendingWhatsappTest] = useState(false);
   
-  const [audienceAll, setAudienceAll] = useState(true);
+  const [audienceMode, setAudienceMode] = useState<"all" | "filter" | "segment">("all");
   const [audienceListsText, setAudienceListsText] = useState("");
   const [audienceTagsText, setAudienceTagsText] = useState("");
+  const [audienceSegmentId, setAudienceSegmentId] = useState("");
   
   const [scheduleType, setScheduleType] = useState<"immediate" | "scheduled">("immediate");
   const [scheduledAt, setScheduledAt] = useState("");
@@ -148,10 +180,21 @@ export default function CampaignsPage() {
 
   const fetchCampaigns = async () => {
     try {
-      const res = await fetch("/api/campaigns");
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (searchQuery.trim()) params.set("search", searchQuery.trim());
+      const res = await fetch(`/api/campaigns?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setCampaigns(data || []);
+        // Backward-compatible: older/unpaginated shape returned a bare array.
+        if (Array.isArray(data)) {
+          setCampaigns(data);
+          setTotalPages(1);
+          setTotalCampaigns(data.length);
+        } else {
+          setCampaigns(data.campaigns || []);
+          setTotalPages(data.pages || 1);
+          setTotalCampaigns(data.total || 0);
+        }
       }
     } catch {
       showNotification("Failed to fetch campaigns", "error");
@@ -167,15 +210,7 @@ export default function CampaignsPage() {
         setTemplates(tData || []);
       }
 
-      // 2. Fetch verified email identities
-      const sRes = await fetch("/api/senders");
-      if (sRes.ok) {
-        const sData = await sRes.json();
-        const verifiedSenders = (sData || []).filter((s: any) => s.verification_status === "verified");
-        setSenders(verifiedSenders);
-      }
-
-      // 3. Fetch list and tag options from subscribers endpoint
+      // 2. Fetch list and tag options from subscribers endpoint
       const subRes = await fetch("/api/subscribers");
       if (subRes.ok) {
         const subData = await subRes.json();
@@ -183,11 +218,18 @@ export default function CampaignsPage() {
         setTags(subData.tags || []);
       }
 
-      // 4. Fetch WhatsApp templates
+      // 3. Fetch WhatsApp templates
       const wRes = await fetch("/api/campaigns/meta/whatsapp-templates");
       if (wRes.ok) {
         const wData = await wRes.json();
         setWhatsappTemplates(wData.templates || []);
+      }
+
+      // 4. Fetch segments for the audience picker
+      const segRes = await fetch("/api/segments");
+      if (segRes.ok) {
+        const segData = await segRes.json();
+        setSegments(segData || []);
       }
     } catch {
       showNotification("Failed to load campaign helpers", "error");
@@ -202,7 +244,14 @@ export default function CampaignsPage() {
 
   useEffect(() => {
     fetchAllData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPage(1);
+    fetchCampaigns();
+  };
 
   const handleCampaignAction = async (id: string, action: "pause" | "resume" | "cancel") => {
     try {
@@ -322,7 +371,37 @@ export default function CampaignsPage() {
     }
   };
 
-  // Submit wizard campaign creation
+  const buildWizardPayload = (asDraft: boolean) => {
+    const needsEmail = channel !== "whatsapp";
+    const needsWhatsapp = channel !== "email";
+    return {
+      name: formName,
+      subject: needsEmail ? formSubject : undefined,
+      sender_name: needsEmail ? formSenderName : undefined,
+      sender_email: needsEmail ? formSenderEmail : undefined,
+      reply_to: (needsEmail && formReplyTo) ? formReplyTo : undefined,
+      template_id: needsEmail ? formTemplateId : undefined,
+      channel,
+      whatsapp_template: needsWhatsapp ? whatsappTemplate : undefined,
+      ab_test: needsEmail ? {
+        enabled: abEnabled,
+        split_percentage: abSplitPercentage,
+        subject_b: abSubjectB || undefined,
+        template_id_b: abTemplateIdB || undefined,
+      } : undefined,
+      audience: {
+        all: audienceMode === "all",
+        lists: audienceMode === "filter" ? audienceListsText.split(",").map(l => l.trim()).filter(Boolean) : [],
+        tags: audienceMode === "filter" ? audienceTagsText.split(",").map(t => t.trim()).filter(Boolean) : [],
+        segment_id: audienceMode === "segment" ? audienceSegmentId || undefined : undefined,
+      },
+      schedule_type: scheduleType,
+      scheduled_at: scheduleType === "scheduled" ? scheduledAt : undefined,
+      save_as_draft: asDraft,
+    };
+  };
+
+  // Submit wizard campaign creation/edit (launch)
   const handleWizardSubmit = async () => {
     const needsEmail = channel !== "whatsapp";
     const needsWhatsapp = channel !== "email";
@@ -343,29 +422,13 @@ export default function CampaignsPage() {
     setSubmitting(true);
     setFormError("");
 
-    const payload = {
-      name: formName,
-      subject: needsEmail ? formSubject : undefined,
-      sender_name: needsEmail ? formSenderName : undefined,
-      sender_email: needsEmail ? formSenderEmail : undefined,
-      reply_to: (needsEmail && formReplyTo) ? formReplyTo : undefined,
-      template_id: needsEmail ? formTemplateId : undefined,
-      channel,
-      whatsapp_template: needsWhatsapp ? whatsappTemplate : undefined,
-      audience: {
-        all: audienceAll,
-        lists: audienceAll ? [] : audienceListsText.split(",").map(l => l.trim()).filter(Boolean),
-        tags: audienceAll ? [] : audienceTagsText.split(",").map(t => t.trim()).filter(Boolean),
-      },
-      schedule_type: scheduleType,
-      scheduled_at: scheduleType === "scheduled" ? scheduledAt : undefined,
-    };
+    const payload = buildWizardPayload(false);
 
     try {
       const res = await fetch("/api/campaigns", {
-        method: "POST",
+        method: editingCampaignId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(editingCampaignId ? { id: editingCampaignId, ...payload } : payload),
       });
 
       const data = await res.json();
@@ -384,19 +447,121 @@ export default function CampaignsPage() {
     }
   };
 
+  // Save the wizard's current state as a draft (relaxed validation — name only)
+  const handleSaveDraft = async () => {
+    if (!formName) {
+      setFormError("Campaign Name is required");
+      return;
+    }
+    setSubmitting(true);
+    setFormError("");
+
+    const payload = buildWizardPayload(true);
+
+    try {
+      const res = await fetch("/api/campaigns", {
+        method: editingCampaignId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingCampaignId ? { id: editingCampaignId, ...payload } : payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showNotification("Campaign saved as draft");
+        setShowWizard(false);
+        resetWizard();
+        fetchCampaigns();
+      } else {
+        setFormError(data.error || "Failed to save draft");
+      }
+    } catch {
+      setFormError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Load a draft/scheduled/paused campaign into the wizard for editing
+  const handleEditCampaign = (camp: Campaign) => {
+    setEditingCampaignId(camp.id);
+    setFormName(camp.name);
+    setFormSubject(camp.subject || "");
+    setFormSenderName(camp.sender_name || BRAND_NAME);
+    setFormSenderEmail(camp.sender_email || BRAND_SUPPORT_EMAIL);
+    setFormReplyTo(camp.reply_to || "");
+    setFormTemplateId(typeof camp.template_id === "object" ? camp.template_id?.id || "" : camp.template_id || "");
+    setChannel(camp.channel || "email");
+    setWhatsappTemplate(camp.whatsapp_template || "");
+    setAbEnabled(!!camp.ab_test?.enabled);
+    setAbSplitPercentage(camp.ab_test?.split_percentage || 50);
+    setAbSubjectB(camp.ab_test?.subject_b || "");
+    setAbTemplateIdB(
+      typeof camp.ab_test?.template_id_b === "object"
+        ? (camp.ab_test?.template_id_b as any)?.id || ""
+        : camp.ab_test?.template_id_b || ""
+    );
+    if (camp.audience?.segment_id) {
+      setAudienceMode("segment");
+      setAudienceSegmentId(
+        typeof camp.audience.segment_id === "object" ? camp.audience.segment_id.id : camp.audience.segment_id
+      );
+    } else if (camp.audience?.all === false) {
+      setAudienceMode("filter");
+      setAudienceListsText((camp.audience.lists || []).join(", "));
+      setAudienceTagsText((camp.audience.tags || []).join(", "));
+    } else {
+      setAudienceMode("all");
+    }
+    setScheduleType(camp.schedule_type || "immediate");
+    setScheduledAt(camp.scheduled_at ? camp.scheduled_at.slice(0, 16) : "");
+    setFormError("");
+    setWizardStep(1);
+    setShowWizard(true);
+  };
+
+  // Launch a draft campaign immediately or on its configured schedule
+  const handleLaunchDraft = async (camp: Campaign) => {
+    try {
+      const res = await fetch("/api/campaigns", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: camp.id,
+          action: "launch",
+          schedule_type: camp.schedule_type,
+          scheduled_at: camp.scheduled_at,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showNotification("Draft campaign launched!");
+        fetchCampaigns();
+      } else {
+        showNotification(data.error || "Failed to launch draft — check it has all required fields", "error");
+      }
+    } catch {
+      showNotification("Network error", "error");
+    }
+  };
+
   const resetWizard = () => {
     setWizardStep(1);
+    setEditingCampaignId(null);
     setFormName("");
     setFormSubject("");
-    setFormSenderName("Pratipal");
-    setFormSenderEmail("contact@notifications.pratipal.in");
+    setFormSenderName(BRAND_NAME);
+    setFormSenderEmail(BRAND_SUPPORT_EMAIL);
     setFormReplyTo("");
     setFormTemplateId("");
     setChannel("email");
     setWhatsappTemplate("");
-    setAudienceAll(true);
+    setAbEnabled(false);
+    setAbSplitPercentage(50);
+    setAbSubjectB("");
+    setAbTemplateIdB("");
+    setAudienceMode("all");
     setAudienceListsText("");
     setAudienceTagsText("");
+    setAudienceSegmentId("");
     setScheduleType("immediate");
     setScheduledAt("");
     setFormError("");
@@ -431,21 +596,39 @@ export default function CampaignsPage() {
           <h1 className="text-2xl font-bold text-slate-800">Campaign Management</h1>
           <p className="text-slate-500 text-sm mt-1">Deploy newsletter campaigns, follow-ups, and track deliveries.</p>
         </div>
-        <div>
-          <button
-            onClick={() => {
-              resetWizard();
-              setShowWizard(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-4.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition-all shadow-sm shadow-emerald-500/10 cursor-pointer"
-          >
-            <Plus className="h-4.5 w-4.5" /> Start Campaign
-          </button>
-        </div>
+        {canWrite && (
+          <div>
+            <button
+              onClick={() => {
+                resetWizard();
+                setShowWizard(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-4.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition-all shadow-sm shadow-emerald-500/10 cursor-pointer"
+            >
+              <Plus className="h-4.5 w-4.5" /> Start Campaign
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Campaign Lists */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        {/* Search Bar */}
+        <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 px-6 py-4 border-b border-slate-100">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search campaigns by name or subject..."
+            className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900"
+          />
+          <button
+            type="submit"
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition-all cursor-pointer"
+          >
+            Search
+          </button>
+        </form>
         {/* Date Filter Bar */}
         <div className="flex items-center gap-2 px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex-wrap">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Filter by Date:</span>
@@ -600,7 +783,34 @@ export default function CampaignsPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        {isEmailChannel && (
+                        {camp.status !== "draft" && (
+                          <Link
+                            href={`/campaigns/${camp.id}`}
+                            className="p-1.5 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-lg transition-all inline-flex cursor-pointer border border-slate-150"
+                            title="View Analytics"
+                          >
+                            <BarChart3 className="h-4 w-4" />
+                          </Link>
+                        )}
+                        {canWrite && ["draft", "scheduled", "paused"].includes(camp.status) && (
+                          <button
+                            onClick={() => handleEditCampaign(camp)}
+                            className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-700 rounded-lg transition-all inline-flex cursor-pointer border border-slate-150"
+                            title="Edit Campaign"
+                          >
+                            <FileEdit className="h-4 w-4" />
+                          </button>
+                        )}
+                        {canWrite && camp.status === "draft" && (
+                          <button
+                            onClick={() => handleLaunchDraft(camp)}
+                            className="p-1.5 hover:bg-emerald-50 text-slate-500 hover:text-emerald-600 rounded-lg transition-all inline-flex cursor-pointer border border-emerald-100"
+                            title="Launch Draft"
+                          >
+                            <Rocket className="h-4 w-4" />
+                          </button>
+                        )}
+                        {canWrite && isEmailChannel && (
                           <button
                             onClick={() => {
                               setTestCampaignId(camp.id);
@@ -613,7 +823,7 @@ export default function CampaignsPage() {
                             <Send className="h-4 w-4" />
                           </button>
                         )}
-                        {isWhatsappChannel && (
+                        {canWrite && isWhatsappChannel && (
                           <button
                             onClick={() => {
                               setTestWhatsappCampaign(camp);
@@ -625,20 +835,22 @@ export default function CampaignsPage() {
                             <MessageCircle className="h-4 w-4" />
                           </button>
                         )}
-                        <button
-                          onClick={() => {
-                            setRerunCampaignId(camp.id);
-                            setRerunCampaignName(camp.name);
-                            setRerunScheduleType("immediate");
-                            setRerunScheduledAt("");
-                            setShowRerunModal(true);
-                          }}
-                          className="p-1.5 hover:bg-emerald-55/35 text-slate-500 hover:text-emerald-600 rounded-lg transition-all inline-flex cursor-pointer border border-emerald-100"
-                          title="Rerun Campaign"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </button>
-                        {camp.status === "sending" && (
+                        {canWrite && (
+                          <button
+                            onClick={() => {
+                              setRerunCampaignId(camp.id);
+                              setRerunCampaignName(camp.name);
+                              setRerunScheduleType("immediate");
+                              setRerunScheduledAt("");
+                              setShowRerunModal(true);
+                            }}
+                            className="p-1.5 hover:bg-emerald-55/35 text-slate-500 hover:text-emerald-600 rounded-lg transition-all inline-flex cursor-pointer border border-emerald-100"
+                            title="Rerun Campaign"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </button>
+                        )}
+                        {canWrite && camp.status === "sending" && (
                           <button
                             onClick={() => handleCampaignAction(camp.id, "pause")}
                             className="p-1.5 bg-slate-100 hover:bg-amber-50 text-slate-500 hover:text-amber-600 rounded-lg transition-all inline-flex cursor-pointer"
@@ -647,7 +859,7 @@ export default function CampaignsPage() {
                             <Pause className="h-4 w-4" />
                           </button>
                         )}
-                        {camp.status === "paused" && (
+                        {canWrite && camp.status === "paused" && (
                           <button
                             onClick={() => handleCampaignAction(camp.id, "resume")}
                             className="p-1.5 bg-slate-100 hover:bg-emerald-50 text-slate-500 hover:text-emerald-600 rounded-lg transition-all inline-flex cursor-pointer"
@@ -656,7 +868,7 @@ export default function CampaignsPage() {
                             <Play className="h-4 w-4" />
                           </button>
                         )}
-                        {(camp.status === "sending" || camp.status === "scheduled" || camp.status === "paused") && (
+                        {canWrite && (camp.status === "sending" || camp.status === "scheduled" || camp.status === "paused") && (
                           <button
                             onClick={() => handleCampaignAction(camp.id, "cancel")}
                             className="p-1.5 bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-lg transition-all inline-flex cursor-pointer"
@@ -665,19 +877,46 @@ export default function CampaignsPage() {
                             <XSquare className="h-4 w-4" />
                           </button>
                         )}
-                        <button
-                          onClick={() => handleDelete(camp.id)}
-                          className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-all inline-flex cursor-pointer"
-                          title="Delete campaign"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {canWrite && (
+                          <button
+                            onClick={() => handleDelete(camp.id)}
+                            className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-all inline-flex cursor-pointer"
+                            title="Delete campaign"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination Footer */}
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+            <span className="text-[10px] text-slate-400 font-semibold">
+              Page {page} of {totalPages} &middot; {totalCampaigns} total campaigns
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="p-2 border border-slate-200 hover:bg-white bg-white rounded-lg text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="p-2 border border-slate-200 hover:bg-white bg-white rounded-lg text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -691,7 +930,7 @@ export default function CampaignsPage() {
               <div className="flex items-center gap-2">
                 <Send className="h-5 w-5 text-emerald-600" />
                 <div>
-                  <h2 className="text-lg font-bold text-slate-800">Launch New Campaign</h2>
+                  <h2 className="text-lg font-bold text-slate-800">{editingCampaignId ? "Edit Campaign" : "Launch New Campaign"}</h2>
                   <p className="text-slate-400 text-xs">Step {wizardStep} of 3</p>
                 </div>
               </div>
@@ -833,6 +1072,69 @@ export default function CampaignsPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* A/B Test toggle (email-capable channels only) */}
+                  {channel !== "whatsapp" && (
+                    <div className="border border-slate-200/80 bg-white rounded-2xl p-4 space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => setAbEnabled((v) => !v)}
+                        className="w-full flex items-center justify-between cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          <FlaskConical className="h-4 w-4 text-indigo-500" /> A/B Subject Test
+                        </span>
+                        <span className={`w-9 h-5 rounded-full transition-all relative ${abEnabled ? "bg-emerald-600" : "bg-slate-200"}`}>
+                          <span className={`absolute top-0.5 h-4 w-4 bg-white rounded-full transition-all ${abEnabled ? "left-4.5" : "left-0.5"}`} />
+                        </span>
+                      </button>
+
+                      {abEnabled && (
+                        <div className="space-y-3 pt-1 animate-fade-in">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                              Variant A / B Split: {abSplitPercentage}% see B
+                            </label>
+                            <input
+                              type="range"
+                              min={1}
+                              max={99}
+                              value={abSplitPercentage}
+                              onChange={(e) => setAbSplitPercentage(parseInt(e.target.value, 10))}
+                              className="w-full cursor-pointer"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Variant B Subject Line</label>
+                            <input
+                              type="text"
+                              value={abSubjectB}
+                              onChange={(e) => setAbSubjectB(e.target.value)}
+                              placeholder="Alternate subject line to test against the default"
+                              className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white text-slate-900"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Variant B Template (optional)</label>
+                            <select
+                              value={abTemplateIdB}
+                              onChange={(e) => setAbTemplateIdB(e.target.value)}
+                              className="w-full border border-slate-200 bg-white rounded-xl px-3 py-2 text-xs"
+                              style={{ color: "#0f172a" }}
+                            >
+                              <option value="">-- Same template as Variant A --</option>
+                              {templates.map((t) => (
+                                <option key={t.id} value={t.id}>{t.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <p className="text-[10px] text-slate-400 leading-relaxed">
+                            Recipients are deterministically split by email hash. At least a variant B subject or template is required.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -846,21 +1148,52 @@ export default function CampaignsPage() {
                     <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                       <button
                         type="button"
-                        onClick={() => setAudienceAll(true)}
-                        className={`flex-1 py-1.5 rounded-md font-semibold text-xs transition-all cursor-pointer ${audienceAll ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}
+                        onClick={() => setAudienceMode("all")}
+                        className={`flex-1 py-1.5 rounded-md font-semibold text-xs transition-all cursor-pointer ${audienceMode === "all" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}
                       >
                         All Subscribers
                       </button>
                       <button
                         type="button"
-                        onClick={() => setAudienceAll(false)}
-                        className={`flex-1 py-1.5 rounded-md font-semibold text-xs transition-all cursor-pointer ${!audienceAll ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}
+                        onClick={() => setAudienceMode("segment")}
+                        className={`flex-1 py-1.5 rounded-md font-semibold text-xs transition-all cursor-pointer ${audienceMode === "segment" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}
                       >
-                        Segment/Filter
+                        Smart Segment
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAudienceMode("filter")}
+                        className={`flex-1 py-1.5 rounded-md font-semibold text-xs transition-all cursor-pointer ${audienceMode === "filter" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}
+                      >
+                        List/Tag Filter
                       </button>
                     </div>
 
-                    {!audienceAll && (
+                    {audienceMode === "segment" && (
+                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 animate-fade-in">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Select Segment</label>
+                        <select
+                          value={audienceSegmentId}
+                          onChange={(e) => setAudienceSegmentId(e.target.value)}
+                          className="w-full border border-slate-200 bg-white rounded-xl px-3 py-2 text-xs appearance-none"
+                          style={{ color: "#0f172a" }}
+                        >
+                          <option value="">-- Choose a segment --</option>
+                          {segments.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} {typeof s.subscriber_count === "number" ? `(${s.subscriber_count})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                        {segments.length === 0 && (
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            No segments yet — build one on the Segments page first.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {audienceMode === "filter" && (
                       <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Filter by List</label>
@@ -1083,7 +1416,17 @@ export default function CampaignsPage() {
                 {wizardStep > 1 ? "Back" : "Cancel"}
               </button>
 
-              <button
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveDraft}
+                  disabled={submitting}
+                  className="px-4.5 py-2.5 border border-slate-200 hover:bg-white bg-white text-slate-700 font-semibold rounded-xl text-sm transition-all cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+                  title="Save progress without launching"
+                >
+                  <FileEdit className="h-4 w-4" /> Save as Draft
+                </button>
+                <button
                 type="button"
                 onClick={() => {
                   if (wizardStep < 3) {
@@ -1115,9 +1458,10 @@ export default function CampaignsPage() {
                 }}
                 disabled={submitting}
                 className="px-4.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition-all cursor-pointer shadow-sm disabled:opacity-50"
-              >
-                {wizardStep < 3 ? "Next Step" : (submitting ? "Deploying..." : "Launch Campaign")}
-              </button>
+                >
+                  {wizardStep < 3 ? "Next Step" : (submitting ? "Deploying..." : editingCampaignId ? "Save & Launch" : "Launch Campaign")}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1185,9 +1529,20 @@ export default function CampaignsPage() {
                 <div className="space-y-0.5">
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Audience Segment</span>
                   <p className="font-semibold text-slate-800">
-                    {selectedCampaign.audience.all ? "All Subscribers" : "Segmented Filter"}
+                    {selectedCampaign.audience.all
+                      ? "All Subscribers"
+                      : selectedCampaign.audience.segment_id
+                      ? "Smart Segment"
+                      : "List/Tag Filter"}
                   </p>
-                  {!selectedCampaign.audience.all && (
+                  {!selectedCampaign.audience.all && selectedCampaign.audience.segment_id && (
+                    <div className="text-[10px] text-slate-505 mt-1">
+                      Segment: <span className="bg-indigo-100 text-indigo-800 px-1 py-0.5 rounded font-mono">
+                        {typeof selectedCampaign.audience.segment_id === "object" ? selectedCampaign.audience.segment_id.name : selectedCampaign.audience.segment_id}
+                      </span>
+                    </div>
+                  )}
+                  {!selectedCampaign.audience.all && !selectedCampaign.audience.segment_id && (
                     <div className="text-[10px] text-slate-505 space-y-0.5 mt-1">
                       {selectedCampaign.audience.lists.length > 0 && (
                         <div>Lists: <span className="bg-slate-200 px-1 py-0.5 rounded font-mono">{selectedCampaign.audience.lists.join(", ")}</span></div>
