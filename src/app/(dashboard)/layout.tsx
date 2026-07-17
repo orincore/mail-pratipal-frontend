@@ -41,7 +41,16 @@ export default async function DashboardLayout({
   // write restrictions for non-admin roles, this is just the entry gate.
   if (!userPayload || !VALID_ROLES.includes(userPayload.role)) {
     const mainAppUrl = process.env.NEXT_PUBLIC_MAIN_APP_URL || "http://localhost:3000";
-    redirect(`${mainAppUrl}/admin/login?redirect=http://localhost:3001/dashboard`);
+
+    // Deliberately NOT derived from request headers (host/x-forwarded-host)
+    // — behind the reverse proxy those can still resolve to this server's
+    // own internal bind address rather than the real public domain (see
+    // middleware.ts for the same issue and fuller explanation). A literal
+    // hardcoded "http://localhost:3001/dashboard" here previously sent every
+    // production login through to localhost instead of crm.pratipal.in.
+    const selfUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001").replace(/\/$/, "");
+
+    redirect(`${mainAppUrl}/admin/login?redirect=${encodeURIComponent(`${selfUrl}/dashboard`)}`);
   }
 
   const adminName = userPayload.full_name || "Administrator";

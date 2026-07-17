@@ -3,6 +3,20 @@ import type { NextRequest } from "next/server";
 
 const COOKIE_NAME = "pratipal_session";
 
+/**
+ * This app's own canonical origin. Deliberately NOT derived from
+ * request.url/request.nextUrl behind the reverse proxy — Next.js middleware
+ * can reflect the server's own internal bind address (e.g.
+ * http://localhost:3000, the port `next start` listens on) rather than the
+ * real external host, even with nginx forwarding Host/X-Forwarded-* headers
+ * correctly. That previously sent every production login redirect to
+ * localhost instead of crm.pratipal.in. Only the path+query (never
+ * host-dependent) are taken from the request.
+ */
+function selfOrigin(): string {
+  return (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001").replace(/\/$/, "");
+}
+
 export function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
@@ -25,7 +39,7 @@ export function middleware(request: NextRequest) {
   const tokenParam = request.nextUrl.searchParams.get("token");
 
   if (tokenParam) {
-    const url = new URL(request.url);
+    const url = new URL(`${selfOrigin()}${request.nextUrl.pathname}${request.nextUrl.search}`);
     url.searchParams.delete("token");
     const response = NextResponse.redirect(url);
     // Secure cookies require HTTPS — only disable for local http:// dev.
@@ -45,7 +59,8 @@ export function middleware(request: NextRequest) {
 
   if (!token) {
     const mainAppUrl = process.env.NEXT_PUBLIC_MAIN_APP_URL || "http://localhost:3000";
-    const redirectUrl = `${mainAppUrl}/admin/login?redirect=${encodeURIComponent(request.url)}`;
+    const selfUrl = `${selfOrigin()}${request.nextUrl.pathname}${request.nextUrl.search}`;
+    const redirectUrl = `${mainAppUrl}/admin/login?redirect=${encodeURIComponent(selfUrl)}`;
     return NextResponse.redirect(redirectUrl);
   }
 
