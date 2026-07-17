@@ -1,7 +1,8 @@
 import React from "react";
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { ArrowLeft, Mail, MessageCircle, Calendar, Tag as TagIcon, FolderPlus } from "lucide-react";
+import { ArrowLeft, Mail, Calendar, Tag as TagIcon, FolderPlus } from "lucide-react";
+import { WhatsAppIcon } from "@/lib/brand-icons";
 import ActivityLog from "./ActivityLog";
 
 async function fetchJSON(url: string, cookieHeader: string) {
@@ -70,7 +71,7 @@ export default async function SubscriberDetailPage({ params }: { params: Promise
         </div>
         <div>
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-            <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+            <WhatsAppIcon className="h-3.5 w-3.5" /> WhatsApp
           </span>
           <p className="text-sm font-semibold text-slate-800 mt-1">{sub.whatsapp_number || "—"}</p>
         </div>

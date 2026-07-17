@@ -583,9 +583,9 @@ function BuilderContent() {
             )}
           </div>
 
-          <div className="flex-1 bg-slate-100 p-6 flex justify-center items-start overflow-y-auto min-h-0">
+          <div className="flex-1 bg-gradient-to-b from-slate-100 to-slate-100/60 p-6 flex justify-center items-start overflow-y-auto min-h-0">
             {templateType === "text" ? (
-              <div className="bg-white shadow-lg rounded-xl p-8 w-full max-w-xl h-[calc(100vh-360px)] overflow-y-auto border border-slate-200/50 flex flex-col">
+              <div className="bg-white shadow-lg rounded-2xl p-8 w-full max-w-xl h-[calc(100vh-360px)] overflow-y-auto border border-slate-200/60 flex flex-col">
                 <div style={{ color: "#1e293b", fontFamily: "sans-serif", fontSize: "14px", whiteSpace: "pre-wrap", lineHeight: "1.6" }}>
                   {htmlContent
                     .replaceAll("{{first_name}}", "Jane")
@@ -600,18 +600,67 @@ function BuilderContent() {
                 </div>
               </div>
             ) : (
-              <div
-                className={`bg-white shadow-lg transition-all duration-300 rounded-xl overflow-hidden border border-slate-200/50 flex flex-col h-[calc(100vh-360px)] ${
-                  previewDevice === "mobile" ? "w-[360px]" : "w-full max-w-2xl"
-                }`}
-              >
-                <iframe
-                  ref={iframeRef}
-                  title="Email Preview"
-                  onLoad={updateIframeContent}
-                  className="w-full h-full border-0 bg-slate-50"
-                  sandbox="allow-same-origin"
-                />
+              /* Single always-mounted tree for both devices — the phone bezel,
+                 status bar, notch, and home indicator are toggled with className
+                 (hidden vs flex/block), never conditionally mounted/unmounted.
+                 The iframe itself must never move to a different position in the
+                 tree: switching JSX branches on device toggle was destroying and
+                 recreating it, so its onLoad fired before doc.write could run and
+                 the mobile preview rendered as a blank frame. */
+              <div className={`transition-all duration-300 ${previewDevice === "mobile" ? "w-[340px]" : "w-full max-w-2xl"}`}>
+                <div className={previewDevice === "mobile" ? "bg-slate-900 rounded-[2.75rem] p-3 shadow-2xl aspect-[9/19] max-h-full flex flex-col" : ""}>
+                  <div
+                    className={`relative bg-white overflow-hidden flex flex-col ${
+                      previewDevice === "mobile"
+                        ? "rounded-[2rem] flex-1 min-h-0"
+                        : "rounded-2xl border border-slate-200/60 shadow-xl h-[calc(100vh-360px)]"
+                    }`}
+                  >
+                    {/* Status bar (mobile only) */}
+                    <div className={previewDevice === "mobile" ? "flex items-center justify-between px-6 pt-3 pb-1.5 shrink-0 bg-white" : "hidden"}>
+                      <span className="text-[12px] font-semibold text-slate-900">9:41</span>
+                      <div className="flex items-center gap-1">
+                        <svg width="16" height="11" viewBox="0 0 16 11" fill="none"><path d="M1 8.5C1 8.5 3 4 8 4C13 4 15 8.5 15 8.5" stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round"/><circle cx="8" cy="9" r="1" fill="#0f172a"/></svg>
+                        <svg width="16" height="11" viewBox="0 0 16 11" fill="none"><rect x="0.5" y="0.5" width="21" height="10" rx="2.5" stroke="#0f172a"/><rect x="2" y="2" width="14" height="7" rx="1.2" fill="#0f172a"/></svg>
+                      </div>
+                    </div>
+                    {/* Notch (mobile only) */}
+                    <div className={previewDevice === "mobile" ? "absolute top-0 left-1/2 -translate-x-1/2 w-28 h-6 bg-slate-900 rounded-b-2xl" : "hidden"} />
+
+                    {/* Inbox-style header — mirrors what the recipient actually sees before opening: sender, subject, and the hidden preheader snippet */}
+                    <div className={`border-b border-slate-100 flex items-start gap-2.5 shrink-0 bg-white ${previewDevice === "mobile" ? "px-4 py-3" : "px-5 py-4"}`}>
+                      <div className={`rounded-full bg-slate-900 text-white flex items-center justify-center font-bold shrink-0 ${previewDevice === "mobile" ? "h-8 w-8 text-[12px]" : "h-9 w-9 text-[13px]"}`}>
+                        {BRAND_NAME.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="text-[12px] font-bold text-slate-800 truncate">{BRAND_NAME}</p>
+                          <span className="text-[10.5px] text-slate-400 shrink-0">{previewDevice === "mobile" ? "Now" : "Just now"}</span>
+                        </div>
+                        <p className={previewDevice === "mobile" ? "hidden" : "text-[11px] text-slate-400 truncate"}>{BRAND_SUPPORT_EMAIL}</p>
+                        <p className="text-[13px] font-semibold text-slate-700 mt-1.5 truncate">
+                          {subject || <span className="text-slate-400 font-normal italic">No subject line set</span>}
+                        </p>
+                        <p className="text-[11.5px] text-slate-400 truncate mt-0.5">
+                          {design.settings.preheaderText || <span className="italic">No preview text set — add one in Design settings</span>}
+                        </p>
+                      </div>
+                    </div>
+
+                    <iframe
+                      ref={iframeRef}
+                      title="Email Preview"
+                      onLoad={updateIframeContent}
+                      className="w-full flex-1 border-0 bg-slate-50 min-h-0"
+                      sandbox="allow-same-origin"
+                    />
+
+                    {/* Home indicator (mobile only) */}
+                    <div className={previewDevice === "mobile" ? "flex justify-center py-1.5 bg-white shrink-0" : "hidden"}>
+                      <div className="w-32 h-1 rounded-full bg-slate-900/80" />
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

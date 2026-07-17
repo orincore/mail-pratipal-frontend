@@ -15,7 +15,6 @@ import {
   Calendar,
   X,
   RotateCcw,
-  MessageCircle,
   FileEdit,
   Rocket,
   ChevronLeft,
@@ -23,6 +22,7 @@ import {
   BarChart3,
   FlaskConical
 } from "lucide-react";
+import { WhatsAppIcon } from "@/lib/brand-icons";
 import Link from "next/link";
 import { useRole } from "../RoleProvider";
 import { BRAND_NAME, BRAND_SUPPORT_EMAIL } from "@/lib/branding";
@@ -832,7 +832,7 @@ export default function CampaignsPage() {
                             className="p-1.5 hover:bg-emerald-55/35 text-slate-500 hover:text-emerald-600 rounded-lg transition-all inline-flex cursor-pointer border border-emerald-105"
                             title="Send Test WhatsApp"
                           >
-                            <MessageCircle className="h-4 w-4" />
+                            <WhatsAppIcon className="h-4 w-4" />
                           </button>
                         )}
                         {canWrite && (
@@ -1042,7 +1042,7 @@ export default function CampaignsPage() {
                 <div className="space-y-4">
                   {channel === "whatsapp" ? (
                     <div className="p-6 bg-slate-50 rounded-xl border border-slate-200 text-center space-y-2">
-                      <MessageCircle className="h-10 w-10 text-emerald-600 mx-auto" />
+                      <WhatsAppIcon className="h-10 w-10 text-emerald-600 mx-auto" />
                       <p className="font-bold text-slate-800 text-sm">WhatsApp Campaign</p>
                       <p className="text-xs text-slate-500 leading-normal">
                         No email template design is required since this campaign will only deliver via WhatsApp. Click Next to continue.
@@ -1392,7 +1392,7 @@ export default function CampaignsPage() {
                             }}
                             className="px-4 py-2 bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 font-semibold rounded-xl text-xs transition-colors border border-slate-200 hover:border-emerald-250 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
                           >
-                            {sendingWhatsappTest ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+                            {sendingWhatsappTest ? <Clock className="h-3.5 w-3.5 animate-spin" /> : <WhatsAppIcon className="h-3.5 w-3.5" />}
                             Send Test WhatsApp
                           </button>
                         </div>
@@ -1862,7 +1862,7 @@ export default function CampaignsPage() {
 
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <MessageCircle className="h-5 w-5 text-emerald-600" />
+                <WhatsAppIcon className="h-5 w-5 text-emerald-600" />
                 <h3 className="text-lg font-bold text-slate-800">Send Test WhatsApp</h3>
               </div>
               <p className="text-slate-500 text-xs leading-relaxed">
@@ -1905,7 +1905,7 @@ export default function CampaignsPage() {
                       </>
                     ) : (
                       <>
-                        <MessageCircle className="h-3 w-3" /> Send Test
+                        <WhatsAppIcon className="h-3 w-3" /> Send Test
                       </>
                     )}
                   </button>

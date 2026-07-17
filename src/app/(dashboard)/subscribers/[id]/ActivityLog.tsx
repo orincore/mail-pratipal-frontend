@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { ChevronLeft, ChevronRight, Mail, MousePointerClick, Send, XCircle, AlertOctagon, UserMinus, MessageCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Mail, MousePointerClick, Send, XCircle, AlertOctagon, UserMinus } from "lucide-react";
+import { WhatsAppIcon } from "@/lib/brand-icons";
 
 interface EventRow {
   id?: string;
@@ -109,7 +110,7 @@ export default function ActivityLog({ subscriberId }: { subscriberId: string }) 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-slate-800 text-sm capitalize">{ev.event_type}</span>
-                    {ev.channel === "whatsapp" && <MessageCircle className="h-3 w-3 text-emerald-500" />}
+                    {ev.channel === "whatsapp" && <WhatsAppIcon className="h-3 w-3 text-emerald-500" />}
                   </div>
                   {source && <p className="text-slate-400 text-xs truncate">{source}</p>}
                   {ev.details?.error && <p className="text-rose-500 text-[11px] truncate mt-0.5">{ev.details.error}</p>}

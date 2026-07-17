@@ -21,16 +21,21 @@ import {
   X,
   Settings2,
   Sparkles,
+  Columns2,
+  Code2,
 } from "lucide-react";
 import {
   type EmailBlock,
   type EmailDesign,
   type Align,
   type SocialPlatform,
+  type ColumnCell,
   createBlock,
   FONT_STACKS,
   SOCIAL_META,
+  DEFAULT_SPACING,
 } from "./blocks";
+import { SOCIAL_ICON_COMPONENTS } from "./social-icons";
 
 const BLOCK_PALETTE: { type: EmailBlock["type"]; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { type: "heading", label: "Heading", icon: Heading1 },
@@ -41,6 +46,8 @@ const BLOCK_PALETTE: { type: EmailBlock["type"]; label: string; icon: React.Comp
   { type: "spacer", label: "Spacer", icon: MoveVertical },
   { type: "social", label: "Social", icon: Share2 },
   { type: "footer", label: "Footer", icon: FileSignature },
+  { type: "columns", label: "Columns", icon: Columns2 },
+  { type: "html", label: "Custom HTML", icon: Code2 },
 ];
 
 // {{unsubscribe}} is deliberately excluded — the backend fills it in as a
@@ -126,6 +133,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputCls =
   "w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white text-slate-900";
 
+/** Shared "space below this block" control, used by most block types. */
+function SpacingField({ value, defaultValue, onChange }: { value: number | undefined; defaultValue: number; onChange: (v: number) => void }) {
+  const current = value ?? defaultValue;
+  return (
+    <Field label={`Space below — ${current}px`}>
+      <input
+        type="range"
+        min={0}
+        max={64}
+        value={current}
+        onChange={(e) => onChange(parseInt(e.target.value, 10))}
+        className="w-full cursor-pointer"
+      />
+    </Field>
+  );
+}
+
 function ColorInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-2 py-1 bg-white">
@@ -177,9 +201,27 @@ function BlockInspector({ block, update }: { block: EmailBlock; update: (patch: 
               />
             </Field>
           </div>
-          <Field label="Alignment">
-            <AlignToggle value={block.align} onChange={(a) => update({ align: a } as Partial<EmailBlock>)} />
-          </Field>
+          <div className="flex items-center justify-between gap-3">
+            <Field label="Alignment">
+              <AlignToggle value={block.align} onChange={(a) => update({ align: a } as Partial<EmailBlock>)} />
+            </Field>
+            {block.type === "text" && (
+              <label className="flex items-center gap-1.5 cursor-pointer pb-1.5">
+                <input
+                  type="checkbox"
+                  checked={!!block.bold}
+                  onChange={(e) => update({ bold: e.target.checked } as Partial<EmailBlock>)}
+                  className="h-3.5 w-3.5 accent-emerald-600 cursor-pointer"
+                />
+                <span className="text-[12px] text-slate-600 font-semibold">Bold</span>
+              </label>
+            )}
+          </div>
+          <SpacingField
+            value={block.spacing}
+            defaultValue={DEFAULT_SPACING[block.type]}
+            onChange={(v) => update({ spacing: v } as Partial<EmailBlock>)}
+          />
         </div>
       );
 
@@ -218,6 +260,34 @@ function BlockInspector({ block, update }: { block: EmailBlock; update: (patch: 
               <AlignToggle value={block.align} onChange={(a) => update({ align: a })} />
             </Field>
           </div>
+          <div className="flex items-center justify-between gap-3">
+            <Field label="Style">
+              <div className="inline-flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg">
+                {(["solid", "outline"] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => update({ style: s })}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-medium capitalize transition-all cursor-pointer ${
+                      (block.style ?? "solid") === s ? "bg-white shadow-sm text-slate-800" : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <label className="flex items-center gap-1.5 cursor-pointer pb-1.5">
+              <input
+                type="checkbox"
+                checked={!!block.fullWidth}
+                onChange={(e) => update({ fullWidth: e.target.checked })}
+                className="h-3.5 w-3.5 accent-emerald-600 cursor-pointer"
+              />
+              <span className="text-[12px] text-slate-600 font-semibold">Full width</span>
+            </label>
+          </div>
+          <SpacingField value={block.spacing} defaultValue={DEFAULT_SPACING.button} onChange={(v) => update({ spacing: v })} />
         </div>
       );
 
@@ -251,14 +321,40 @@ function BlockInspector({ block, update }: { block: EmailBlock; update: (patch: 
             </Field>
           </div>
           {!block.src && <p className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-2.5 py-1.5">Paste an image URL to preview it.</p>}
+          <SpacingField value={block.spacing} defaultValue={DEFAULT_SPACING.image} onChange={(v) => update({ spacing: v })} />
         </div>
       );
 
     case "divider":
       return (
-        <Field label="Line color">
-          <ColorInput value={block.color} onChange={(v) => update({ color: v })} />
-        </Field>
+        <div className="space-y-3">
+          <Field label="Line color">
+            <ColorInput value={block.color} onChange={(v) => update({ color: v })} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Style">
+              <select
+                value={block.lineStyle ?? "solid"}
+                onChange={(e) => update({ lineStyle: e.target.value as "solid" | "dashed" | "dotted" })}
+                className={inputCls}
+              >
+                <option value="solid">Solid</option>
+                <option value="dashed">Dashed</option>
+                <option value="dotted">Dotted</option>
+              </select>
+            </Field>
+            <Field label="Thickness">
+              <input
+                type="number"
+                min={1}
+                max={8}
+                value={block.thickness ?? 1}
+                onChange={(e) => update({ thickness: parseInt(e.target.value, 10) || 1 })}
+                className={inputCls}
+              />
+            </Field>
+          </div>
+        </div>
       );
 
     case "spacer":
@@ -281,22 +377,46 @@ function BlockInspector({ block, update }: { block: EmailBlock; update: (patch: 
           <Field label="Alignment">
             <AlignToggle value={block.align} onChange={(a) => update({ align: a })} />
           </Field>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {block.links.map((link, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <select
-                  value={link.platform}
-                  onChange={(e) => {
-                    const links = [...block.links];
-                    links[idx] = { ...links[idx], platform: e.target.value as SocialPlatform };
-                    update({ links });
-                  }}
-                  className={`${inputCls} w-32 shrink-0`}
-                >
-                  {Object.entries(SOCIAL_META).map(([key, meta]) => (
-                    <option key={key} value={key}>{meta.label}</option>
-                  ))}
-                </select>
+              <div key={idx} className="p-2.5 border border-slate-200 rounded-xl space-y-2">
+                <div className="flex items-center gap-1 flex-wrap">
+                  {(Object.keys(SOCIAL_META) as SocialPlatform[]).map((platform) => {
+                    const Icon = SOCIAL_ICON_COMPONENTS[platform];
+                    const meta = SOCIAL_META[platform];
+                    const active = link.platform === platform;
+                    return (
+                      <button
+                        key={platform}
+                        type="button"
+                        title={meta.label}
+                        onClick={() => {
+                          const links = [...block.links];
+                          links[idx] = { ...links[idx], platform };
+                          update({ links });
+                        }}
+                        className="w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0"
+                        style={{
+                          backgroundColor: active ? meta.color : "#f1f5f9",
+                          color: active ? "#ffffff" : "#94a3b8",
+                          outline: active ? `2px solid ${meta.color}` : "none",
+                          outlineOffset: "1.5px",
+                        }}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => update({ links: block.links.filter((_, i) => i !== idx) })}
+                    disabled={block.links.length === 1}
+                    className="ml-auto p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-30 shrink-0"
+                    title="Remove link"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={link.url}
@@ -306,16 +426,8 @@ function BlockInspector({ block, update }: { block: EmailBlock; update: (patch: 
                     update({ links });
                   }}
                   placeholder="https://…"
-                  className={`${inputCls} flex-1`}
+                  className={`${inputCls} w-full`}
                 />
-                <button
-                  type="button"
-                  onClick={() => update({ links: block.links.filter((_, i) => i !== idx) })}
-                  disabled={block.links.length === 1}
-                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-30"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
               </div>
             ))}
           </div>
@@ -326,6 +438,7 @@ function BlockInspector({ block, update }: { block: EmailBlock; update: (patch: 
           >
             <Plus className="h-3.5 w-3.5" /> Add link
           </button>
+          <SpacingField value={block.spacing} defaultValue={DEFAULT_SPACING.social} onChange={(v) => update({ spacing: v })} />
         </div>
       );
 
@@ -361,6 +474,101 @@ function BlockInspector({ block, update }: { block: EmailBlock; update: (patch: 
           </p>
         </div>
       );
+
+    case "columns": {
+      const updateCell = (side: "left" | "right", patch: Partial<ColumnCell>) => {
+        update({ [side]: { ...block[side], ...patch } } as Partial<EmailBlock>);
+      };
+      const cellFields = (side: "left" | "right", label: string) => {
+        const cell = block[side];
+        return (
+          <div className="p-2.5 border border-slate-200 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-wide">{label}</span>
+              <div className="inline-flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg">
+                {(["text", "image"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => updateCell(side, { type: t })}
+                    className={`px-2 py-0.5 rounded-md text-[10.5px] font-medium capitalize transition-all cursor-pointer ${
+                      cell.type === t ? "bg-white shadow-sm text-slate-800" : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {cell.type === "text" ? (
+              <>
+                <textarea
+                  value={cell.text}
+                  onChange={(e) => updateCell(side, { text: e.target.value })}
+                  rows={2}
+                  className={`${inputCls} resize-none`}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <ColorInput value={cell.color} onChange={(v) => updateCell(side, { color: v })} />
+                  <input
+                    type="number"
+                    min={10}
+                    max={32}
+                    value={cell.fontSize}
+                    onChange={(e) => updateCell(side, { fontSize: parseInt(e.target.value, 10) || cell.fontSize })}
+                    className={inputCls}
+                  />
+                </div>
+              </>
+            ) : (
+              <input
+                type="text"
+                value={cell.src}
+                onChange={(e) => updateCell(side, { src: e.target.value })}
+                placeholder="https://…/image.png"
+                className={inputCls}
+              />
+            )}
+          </div>
+        );
+      };
+      return (
+        <div className="space-y-2.5">
+          {cellFields("left", "Left column")}
+          {cellFields("right", "Right column")}
+          <Field label={`Gap between columns — ${block.gap}px`}>
+            <input
+              type="range"
+              min={0}
+              max={48}
+              value={block.gap}
+              onChange={(e) => update({ gap: parseInt(e.target.value, 10) })}
+              className="w-full cursor-pointer"
+            />
+          </Field>
+          <SpacingField value={block.spacing} defaultValue={DEFAULT_SPACING.columns} onChange={(v) => update({ spacing: v })} />
+        </div>
+      );
+    }
+
+    case "html":
+      return (
+        <div className="space-y-2">
+          <Field label="Custom HTML">
+            <textarea
+              value={block.html}
+              onChange={(e) => update({ html: e.target.value })}
+              rows={6}
+              className={`${inputCls} resize-none font-mono`}
+              spellCheck={false}
+            />
+          </Field>
+          <p className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-2.5 py-1.5">
+            Advanced: this HTML is inserted exactly as written, with no safety checks. Use for
+            layouts the block builder can't do natively.
+          </p>
+        </div>
+      );
   }
 }
 
@@ -381,6 +589,10 @@ function blockSummary(block: EmailBlock): string {
       return `${block.links.length} link${block.links.length === 1 ? "" : "s"}`;
     case "footer":
       return block.text || "(empty)";
+    case "columns":
+      return "2-column layout";
+    case "html":
+      return "Custom HTML snippet";
   }
 }
 
@@ -466,6 +678,15 @@ export default function BlockEditor({
       {/* Global design settings */}
       {showSettings && (
         <div className="p-4 border-b border-slate-100 bg-white space-y-3 animate-fade-in">
+          <Field label="Preview text (shown next to the subject line in the inbox)">
+            <input
+              type="text"
+              value={design.settings.preheaderText ?? ""}
+              onChange={(e) => updateSettings({ preheaderText: e.target.value })}
+              placeholder="e.g. Your webinar starts in 30 minutes…"
+              className={inputCls}
+            />
+          </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Page background">
               <ColorInput value={design.settings.backgroundColor} onChange={(v) => updateSettings({ backgroundColor: v })} />

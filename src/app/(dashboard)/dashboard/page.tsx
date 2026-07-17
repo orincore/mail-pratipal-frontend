@@ -3,11 +3,11 @@ import { cookies } from "next/headers";
 import {
   Users,
   Mail,
-  MessageCircle,
   MousePointerClick,
   ArrowUpRight,
   Gauge,
 } from "lucide-react";
+import { WhatsAppIcon } from "@/lib/brand-icons";
 import Link from "next/link";
 import TimeframeFilter from "./TimeframeFilter";
 import FailedDeliveriesCard from "./FailedDeliveriesCard";
@@ -102,7 +102,7 @@ export default async function DashboardPage(props: {
       label: "WhatsApp sent",
       value: totalWhatsappSent.toLocaleString(),
       detail: `${whatsappDeliveryRate.toFixed(1)}% delivered`,
-      icon: MessageCircle,
+      icon: WhatsAppIcon,
       tint: "violet",
     },
     {
@@ -217,7 +217,7 @@ export default async function DashboardPage(props: {
                   <div key={camp._id || camp.id} className="flex justify-between items-center py-3 first:pt-0 last:pb-0">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${isWhatsapp ? "bg-violet-50 text-violet-600" : "bg-sky-50 text-sky-600"}`}>
-                        {isWhatsapp ? <MessageCircle className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+                        {isWhatsapp ? <WhatsAppIcon className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
                       </div>
                       <div className="min-w-0">
                         <span className="font-medium text-slate-800 text-[13px] block truncate leading-tight">
@@ -268,7 +268,7 @@ export default async function DashboardPage(props: {
                   <div key={rem._id || rem.id} className="flex justify-between items-center py-3 first:pt-0 last:pb-0">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${isWhatsapp ? "bg-violet-50 text-violet-600" : "bg-sky-50 text-sky-600"}`}>
-                        {isWhatsapp ? <MessageCircle className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+                        {isWhatsapp ? <WhatsAppIcon className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
                       </div>
                       <div className="min-w-0">
                         <span className="font-medium text-slate-800 text-[13px] block truncate leading-tight">

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   Search,
   Mail,
-  MessageCircle,
   Users,
   FileCode,
   ArrowRight,

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useRole } from "../../RoleProvider";
 import { BRAND_NAME, BRAND_SUPPORT_EMAIL } from "@/lib/branding";
+import { WhatsAppIcon } from "@/lib/brand-icons";
 import {
   ArrowLeft,
   Users,
@@ -20,7 +21,6 @@ import {
   RotateCcw,
   Send,
   Mail,
-  MessageCircle,
 } from "lucide-react";
 
 interface WebinarDetail {
@@ -532,7 +532,7 @@ export default function WebinarDetailPage() {
                     )}
                     {showWhatsapp && (
                       <span className="inline-flex items-center gap-1">
-                        <MessageCircle className="h-3 w-3 text-slate-400" />
+                        <WhatsAppIcon className="h-3 w-3 text-slate-400" />
                         {dispatchBadge(r.whatsapp_dispatch_status)}
                       </span>
                     )}
@@ -557,7 +557,7 @@ export default function WebinarDetailPage() {
                         className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold cursor-pointer"
                         title="Send a test WhatsApp message to see exactly how this looks"
                       >
-                        <MessageCircle className="h-3.5 w-3.5" /> Test
+                        <WhatsAppIcon className="h-3.5 w-3.5" /> Test
                       </button>
                     )}
                     {canWrite && (
@@ -895,7 +895,7 @@ export default function WebinarDetailPage() {
                 disabled={sendingWhatsappTest}
                 className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-all cursor-pointer inline-flex items-center justify-center gap-1.5"
               >
-                <MessageCircle className="h-3.5 w-3.5" />
+                <WhatsAppIcon className="h-3.5 w-3.5" />
                 {sendingWhatsappTest ? "Sending..." : "Send Test WhatsApp Message"}
               </button>
             </form>
