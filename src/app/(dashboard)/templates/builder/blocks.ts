@@ -175,10 +175,6 @@ export const SOCIAL_ICON_PATHS: Record<Exclude<SocialPlatform, "website">, strin
     "M23.5 6.19a3.02 3.02 0 00-2.12-2.14C19.5 3.55 12 3.55 12 3.55s-7.51 0-9.38.5A3.02 3.02 0 00.5 6.19C0 8.07 0 12 0 12s0 3.93.5 5.81a3.02 3.02 0 002.12 2.14c1.87.5 9.38.5 9.38.5s7.5 0 9.38-.5a3.02 3.02 0 002.12-2.14C24 15.93 24 12 24 12s0-3.93-.5-5.81zM9.55 15.57V8.43L15.82 12z",
 };
 
-/** Generic filled globe glyph for the "website" platform (no brand mark of its own). */
-const GLOBE_PATH =
-  "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm6.93 6h-2.95c-.32-1.25-.78-2.45-1.38-3.56 1.84.63 3.37 1.9 4.33 3.56zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56-1.84-.63-3.37-1.89-4.33-3.56zm2.95-8H5.08c.96-1.66 2.49-2.93 4.33-3.56C8.81 5.55 8.35 6.75 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95c-.96 1.65-2.49 2.93-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z";
-
 export const SOCIAL_META: Record<SocialPlatform, { label: string; color: string }> = {
   facebook: { label: "Facebook", color: "#1877f2" },
   instagram: { label: "Instagram", color: "#e1306c" },
@@ -187,6 +183,19 @@ export const SOCIAL_META: Record<SocialPlatform, { label: string; color: string 
   youtube: { label: "YouTube", color: "#ff0000" },
   website: { label: "Website", color: "#475569" },
 };
+
+/**
+ * Absolute base URL for the hosted social icon PNGs (public/social/*.png).
+ * Email clients (Gmail, Outlook, Yahoo) strip inline <svg>, so outgoing email
+ * HTML must reference real raster images by absolute URL instead. Set
+ * NEXT_PUBLIC_BRAND_ASSET_URL per deployment to the publicly reachable origin
+ * that serves this app's /public folder; it falls back to the app URL.
+ */
+const SOCIAL_ICON_BASE_URL = (
+  process.env.NEXT_PUBLIC_BRAND_ASSET_URL ||
+  process.env.NEXT_PUBLIC_APP_URL ||
+  "http://localhost:3001"
+).replace(/\/$/, "");
 
 let idCounter = 0;
 export function newBlockId(): string {
@@ -325,17 +334,17 @@ function renderBlock(block: EmailBlock, settings: DesignSettings): string {
       return `<div style="height:${block.height}px;line-height:${block.height}px;font-size:1px;">&nbsp;</div>`;
 
     case "social": {
-      // Table-cell centering (align/valign on a <td>) rather than
-      // vertical-align:middle on an inline SVG — the latter aligns to a
-      // point derived from font baseline/x-height metrics, not the true
-      // pixel center of the line box, which left icons visibly off-center
-      // inside their circular badges. Table alignment is also the one
-      // centering technique that behaves consistently in Outlook.
+      // Hosted PNG icons (public/social/*.png) referenced by absolute URL —
+      // email clients (Gmail, Outlook, Yahoo) strip inline <svg>, so the icons
+      // must be real raster images. Each PNG already bakes in the colored
+      // circular badge, so no <table>/background wrapper is needed; the <img>
+      // is rendered at 32px (exported at 2x for retina) with border:0 to kill
+      // the blue link border some clients add to linked images.
       const icons = block.links
         .map((l) => {
           const meta = SOCIAL_META[l.platform];
-          const path = l.platform === "website" ? GLOBE_PATH : SOCIAL_ICON_PATHS[l.platform];
-          return `<a href="${escapeHtml(l.url)}" style="display:inline-block;margin:0 6px;text-decoration:none;"><table role="presentation" width="32" height="32" cellpadding="0" cellspacing="0" style="width:32px;height:32px;border-radius:50%;background-color:${meta.color};"><tr><td align="center" valign="middle" style="width:32px;height:32px;border-radius:50%;line-height:1;"><svg width="16" height="16" viewBox="0 0 24 24" fill="#ffffff" style="display:inline-block;vertical-align:middle;"><path d="${path}"/></svg></td></tr></table></a>`;
+          const src = `${SOCIAL_ICON_BASE_URL}/social/${l.platform}.png`;
+          return `<a href="${escapeHtml(l.url)}" style="display:inline-block;margin:0 6px;text-decoration:none;"><img src="${src}" alt="${escapeHtml(meta.label)}" width="32" height="32" style="display:block;width:32px;height:32px;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;" /></a>`;
         })
         .join("");
       return `<div style="margin:0 0 ${block.spacing ?? DEFAULT_SPACING.social}px;text-align:${alignToTextAlign(block.align)};font-size:0;">${icons}</div>`;
