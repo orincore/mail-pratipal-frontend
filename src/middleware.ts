@@ -20,10 +20,15 @@ function selfOrigin(): string {
 export function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
-  // 1. Bypass auth check for public endpoints: static assets, tracking pixels, webhook/job runners
+  // 1. Bypass auth check for public endpoints: static assets, tracking pixels, webhook/job runners.
+  // Image files under /public (e.g. /social/*.png email icons, /logo.png) MUST be publicly
+  // reachable — they are embedded by absolute URL in outgoing email HTML, so an auth redirect
+  // here makes the images fail to render in recipients' inboxes.
   if (
     path.startsWith("/_next") ||
     path.startsWith("/favicon.ico") ||
+    path.startsWith("/social/") ||
+    /\.(?:png|jpe?g|gif|svg|ico|webp|avif)$/i.test(path) ||
     path.startsWith("/api/track") ||
     path.startsWith("/api/jobs") ||
     path.startsWith("/api/unsubscribe") ||
@@ -70,6 +75,8 @@ export function middleware(request: NextRequest) {
 export const config = {
   // Apply middleware to all paths except the bypassed ones
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/track|api/jobs|api/unsubscribe|api/webhooks|unsubscribe).*)",
+    // Exclude static asset paths (any image file, /social icons) so the auth
+    // redirect never fires for images embedded in outgoing email HTML.
+    "/((?!_next/static|_next/image|favicon.ico|social/|.*\\.(?:png|jpe?g|gif|svg|ico|webp|avif)$|api/track|api/jobs|api/unsubscribe|api/webhooks|unsubscribe).*)",
   ],
 };
