@@ -157,6 +157,7 @@ export default function WebinarDetailPage() {
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [whatsappTemplates, setWhatsappTemplates] = useState<WhatsappTemplateOption[]>([]);
   const [defaultWhatsappForPreset, setDefaultWhatsappForPreset] = useState<Record<string, string>>({});
+  const [defaultEmailNameForPreset, setDefaultEmailNameForPreset] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
@@ -217,6 +218,7 @@ export default function WebinarDetailPage() {
         const data = await res.json();
         setWhatsappTemplates(data.templates ?? []);
         setDefaultWhatsappForPreset(data.defaultForPreset ?? {});
+        setDefaultEmailNameForPreset(data.defaultEmailTemplateNameForPreset ?? {});
       }
     } catch {
       // non-fatal
@@ -238,8 +240,15 @@ export default function WebinarDetailPage() {
     setPickerDate("");
     setPickerTime("09:00");
     setChannel("email");
-    setTemplateId("");
-    setSubject("");
+    // Prefill the email template/subject from this preset's default (e.g.
+    // "3 days before" -> the no-join-button "Upcoming" template, "At webinar
+    // start" -> the urgent "Live Now" one) instead of always starting blank —
+    // otherwise admins keep reusing whatever template was last picked, which
+    // is how every reminder ended up sharing one join-button template.
+    const defaultTemplateName = preset ? defaultEmailNameForPreset[preset] : undefined;
+    const defaultTemplate = defaultTemplateName ? templates.find((t) => t.name === defaultTemplateName) : undefined;
+    setTemplateId(defaultTemplate?.id || "");
+    setSubject(defaultTemplate?.subject || "");
     setWhatsappTemplate(preset ? defaultWhatsappForPreset[preset] || "" : "");
     setShowModal(true);
   }
